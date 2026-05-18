@@ -227,9 +227,9 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const [defaultTimerMinutes, setDefaultTimerMinutesState] = useState(25);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
-  // Ref so mutation closures always read current values without needing re-memoization
-  const syncRef = useRef({ userId, isPremium: false });
-  useEffect(() => { syncRef.current = { userId, isPremium }; }, [userId, isPremium]);
+  // Ref so mutation closures always read current userId without needing re-memoization
+  const syncRef = useRef({ userId });
+  useEffect(() => { syncRef.current = { userId }; }, [userId]);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -276,29 +276,19 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
 
     setLoaded(true);
 
-    // For logged-in users: verify premium status and load cloud data
+    // For logged-in users: load cloud data (sync available to all signed-in users)
     if (userId) {
       dbLoad(userId).then(({ tasks: dbTasks, completedTasks: dbCompleted, customRestTaskIds, settings }) => {
         const premium = settings?.is_premium ?? false;
         setIsPremium(premium);
         lsSet(KEYS.isPremium, premium);
 
-        if (premium) {
-          if (dbTasks.length > 0) setTasks(dbTasks);
-          if (dbCompleted.length > 0) {
-            setCompletedTasks(dbCompleted);
-          }
-          // Restore custom rest tasks from DB; presets are always client-side
-          if (customRestTaskIds.length > 0) {
-            setRestTasks((prev) =>
-              prev.map((t) => (customRestTaskIds.includes(t.id) ? t : t))
-            );
-          }
-          if (settings) {
-            setDailyGoalState(settings.daily_goal);
-            setDefaultTimerMinutesState(settings.default_timer_minutes);
-            setRestGoalTierState(settings.rest_goal_tier as RestGoalTier);
-          }
+        if (dbTasks.length > 0) setTasks(dbTasks);
+        if (dbCompleted.length > 0) setCompletedTasks(dbCompleted);
+        if (settings) {
+          setDailyGoalState(settings.daily_goal);
+          setDefaultTimerMinutesState(settings.default_timer_minutes);
+          setRestGoalTierState(settings.rest_goal_tier as RestGoalTier);
         }
       }).catch(() => {});
     }
@@ -327,27 +317,27 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   useEffect(() => { if (loaded) lsSet(KEYS.defaultTimerMinutes, defaultTimerMinutes); }, [defaultTimerMinutes, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.hasSeenOnboarding, hasSeenOnboarding); }, [hasSeenOnboarding, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.isPremium, isPremium); }, [isPremium, loaded]);
-  // Sync settings to Supabase for premium users
+  // Sync settings to Supabase for all signed-in users
   useEffect(() => {
-    if (!loaded || !userId || !isPremium) return;
+    if (!loaded || !userId) return;
     dbUpsertSettings(userId, { dailyGoal, defaultTimerMinutes, restGoalTier });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dailyGoal, defaultTimerMinutes, restGoalTier, loaded, userId, isPremium]);
+  }, [dailyGoal, defaultTimerMinutes, restGoalTier, loaded, userId]);
 
   // ─── Task actions ────────────────────────────────────────────────────────────
 
   const addTask = (task: Omit<Task, "id">) => {
     const newTask = { ...task, id: Date.now().toString() };
     setTasks((prev) => [...prev, newTask]);
-    const { userId: uid, isPremium: premium } = syncRef.current;
-    if (uid && premium) dbUpsertTask(uid, newTask, 0);
+    const { userId: uid } = syncRef.current;
+    if (uid) dbUpsertTask(uid, newTask, 0);
   };
 
   const updateTask = (id: string, updates: Partial<Task>) => {
     setTasks((prev) => {
       const next = prev.map((t) => (t.id === id ? { ...t, ...updates } : t));
-      const { userId: uid, isPremium: premium } = syncRef.current;
-      if (uid && premium) {
+      const { userId: uid } = syncRef.current;
+      if (uid) {
         const updated = next.find((t) => t.id === id);
         if (updated) dbUpsertTask(uid, updated, next.indexOf(updated));
       }
@@ -357,8 +347,8 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
 
   const deleteTask = (id: string) => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
-    const { userId: uid, isPremium: premium } = syncRef.current;
-    if (uid && premium) dbDeleteTask(uid, id);
+    const { userId: uid } = syncRef.current;
+    if (uid) dbDeleteTask(uid, id);
   };
 
   const completeTask = (taskId: string, minutesActual: number) => {
@@ -376,8 +366,8 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
       completedAt: new Date(),
     };
     setCompletedTasks((prev) => [completed, ...prev]);
-    const { userId: uid, isPremium: premium } = syncRef.current;
-    if (uid && premium) dbInsertCompleted(uid, completed);
+    const { userId: uid } = syncRef.current;
+    if (uid) dbInsertCompleted(uid, completed);
   };
 
   const uncompleteTask = (completedTaskId: string) => {
@@ -389,8 +379,8 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     };
     setTasks((prev) => [...prev, restoredTask]);
     setCompletedTasks((prev) => prev.filter((t) => t.id !== completedTaskId));
-    const { userId: uid, isPremium: premium } = syncRef.current;
-    if (uid && premium) {
+    const { userId: uid } = syncRef.current;
+    if (uid) {
       dbUpsertTask(uid, restoredTask, 0);
       dbDeleteCompleted(uid, completedTaskId);
     }
@@ -497,16 +487,16 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
       category: "My Tasks" as RestCategory,
     };
     setRestTasks((prev) => [...prev, newTask]);
-    const { userId: uid, isPremium: premium } = syncRef.current;
-    if (uid && premium) dbUpsertRestTask(uid, newTask);
+    const { userId: uid } = syncRef.current;
+    if (uid) dbUpsertRestTask(uid, newTask);
   };
 
   const removeRestTask = (id: string) => {
     const task = restTasks.find((t) => t.id === id);
     if (!task || task.isPreset) return;
     setRestTasks((prev) => prev.filter((t) => t.id !== id));
-    const { userId: uid, isPremium: premium } = syncRef.current;
-    if (uid && premium) dbDeleteRestTask(uid, id);
+    const { userId: uid } = syncRef.current;
+    if (uid) dbDeleteRestTask(uid, id);
   };
 
   const setTodayMood = useCallback((mood: DailyMood) => {

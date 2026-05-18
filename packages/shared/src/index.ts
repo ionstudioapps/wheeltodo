@@ -1,6 +1,7 @@
 import { z } from "zod";
 export * from "./supabase";
 export * from "./themes";
+export * from "./db";
 
 export const TaskSchema = z.object({
   id: z.string(),

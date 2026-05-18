@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode, useRef } from 'react';
-import { getSupabaseClient } from '@todo/shared';
+import { getSupabaseClient, dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted, dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings } from '@todo/shared';
 import { ACHIEVEMENT_DEFS, getUnlockedTierIds, type AchievementValues } from '../utils/achievements';
 
 export interface Task {
@@ -196,6 +196,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [wheelSoundEnabled, setWheelSoundEnabled] = useState(true);
   const [user, setUser] = useState<{ name: string; email: string; initials: string; avatarId?: string } | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [supabaseUserId, setSupabaseUserId] = useState<string | null>(null);
+  const syncRef = useRef<{ userId: string | null }>({ userId: null });
+  useEffect(() => { syncRef.current = { userId: supabaseUserId }; }, [supabaseUserId]);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [seenAchievements, setSeenAchievements] = useState<string[]>([]);
   const [pendingAchievementToast, setPendingAchievementToast] = useState<string | null>(null);
@@ -316,15 +319,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [user, loaded]);
 
   const addTask = (task: Omit<Task, 'id'>) => {
-    setTasks((prev) => [...prev, { ...task, id: Date.now().toString() }]);
+    const newTask = { ...task, id: Date.now().toString() };
+    setTasks((prev) => [...prev, newTask]);
+    const { userId: uid } = syncRef.current;
+    if (uid) dbUpsertTask(uid, newTask, 0);
   };
 
   const updateTask = (id: string, updates: Partial<Task>) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+    setTasks((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, ...updates } : t));
+      const { userId: uid } = syncRef.current;
+      if (uid) {
+        const updated = next.find((t) => t.id === id);
+        if (updated) dbUpsertTask(uid, updated, next.indexOf(updated));
+      }
+      return next;
+    });
   };
 
   const deleteTask = (id: string) => {
     setTasks((prev) => prev.filter((t) => t.id !== id));
+    const { userId: uid } = syncRef.current;
+    if (uid) dbDeleteTask(uid, id);
   };
 
   const completeTask = (taskId: string, minutesActual: number) => {
@@ -342,20 +358,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       completedAt: new Date(),
     };
     setCompletedTasks((prev) => [completed, ...prev]);
+    const { userId: uid } = syncRef.current;
+    if (uid) dbInsertCompleted(uid, completed);
   };
 
   const uncompleteTask = (completedTaskId: string) => {
     const ct = completedTasks.find((t) => t.id === completedTaskId);
     if (!ct) return;
-    setTasks((prev) => [...prev, {
-      id: ct.taskId,
-      name: ct.taskName,
-      minutes: ct.minutesEstimated,
-      color: ct.color,
-      icon: ct.icon ?? 'BookOpen',
-      category: ct.category,
-    }]);
+    const restoredTask: Task = {
+      id: ct.taskId, name: ct.taskName, minutes: ct.minutesEstimated,
+      color: ct.color, icon: ct.icon ?? 'BookOpen', category: ct.category,
+    };
+    setTasks((prev) => [...prev, restoredTask]);
     setCompletedTasks((prev) => prev.filter((t) => t.id !== completedTaskId));
+    const { userId: uid } = syncRef.current;
+    if (uid) {
+      dbUpsertTask(uid, restoredTask, 0);
+      dbDeleteCompleted(uid, completedTaskId);
+    }
   };
 
   const startPomodoro = (task: Task) => {
@@ -414,6 +434,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const name = u.user_metadata?.full_name ?? u.email?.split('@')[0] ?? 'User';
         const initials = name.slice(0, 2).toUpperCase();
         setUser({ name, email: u.email ?? '', initials });
+        setSupabaseUserId(u.id);
       }
       setAuthLoading(false);
     });
@@ -423,12 +444,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const name = u.user_metadata?.full_name ?? u.email?.split('@')[0] ?? 'User';
         const initials = name.slice(0, 2).toUpperCase();
         setUser({ name, email: u.email ?? '', initials });
+        setSupabaseUserId(u.id);
       } else {
         setUser(null);
+        setSupabaseUserId(null);
       }
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Load cloud data when user signs in
+  useEffect(() => {
+    if (!supabaseUserId || !loaded) return;
+    dbLoad(supabaseUserId).then(({ tasks: dbTasks, completedTasks: dbCompleted, settings }) => {
+      if (dbTasks.length > 0) setTasks(dbTasks);
+      if (dbCompleted.length > 0) {
+        setCompletedTasks(dbCompleted.map((ct) => ({ ...ct, completedAt: new Date(ct.completedAt) })));
+      }
+      if (settings) {
+        setDailyGoal(settings.daily_goal);
+        setDefaultTimerMinutes(settings.default_timer_minutes);
+        setRestGoalTierState(settings.rest_goal_tier as RestGoalTier);
+      }
+    }).catch(() => {});
+  }, [supabaseUserId, loaded]);
+
+  // Sync settings whenever they change
+  useEffect(() => {
+    if (!loaded || !supabaseUserId) return;
+    dbUpsertSettings(supabaseUserId, { dailyGoal, defaultTimerMinutes, restGoalTier });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dailyGoal, defaultTimerMinutes, restGoalTier, loaded, supabaseUserId]);
 
   const login = async (email: string, password: string): Promise<string | null> => {
     const supabase = getSupabaseClient();
@@ -566,23 +612,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addRestTask = (name: string, durationMinutes = 10) => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    setRestTasks((prev) => [
-      ...prev,
-      {
-        id: `custom_${Date.now()}`,
-        name: trimmed,
-        isPreset: false,
-        completedToday: false,
-        durationMinutes,
-        category: 'My Tasks' as RestCategory,
-      },
-    ]);
+    const newTask: RestTask = {
+      id: `custom_${Date.now()}`,
+      name: trimmed,
+      isPreset: false,
+      completedToday: false,
+      durationMinutes,
+      category: 'My Tasks' as RestCategory,
+    };
+    setRestTasks((prev) => [...prev, newTask]);
+    const { userId: uid } = syncRef.current;
+    if (uid) dbUpsertRestTask(uid, newTask);
   };
 
   const removeRestTask = (id: string) => {
     const task = restTasks.find((t) => t.id === id);
     if (!task || task.isPreset) return;
     setRestTasks((prev) => prev.filter((t) => t.id !== id));
+    const { userId: uid } = syncRef.current;
+    if (uid) dbDeleteRestTask(uid, id);
   };
 
   const setTodayMood = useCallback((mood: DailyMood) => {
