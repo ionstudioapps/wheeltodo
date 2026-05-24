@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WheelTodo · Live</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; min-height: 100%; background: #ECE9E2; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 32px 16px;
+  }
+  .stage {
+    display: flex; align-items: center; justify-content: center;
+    gap: 18px; flex-wrap: wrap;
+  }
+  .label {
+    position: absolute; top: -28px; left: 0;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 11px; color: #8A7E7A;
+    font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .frame-wrap { position: relative; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<template id="__bundler_thumbnail">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+    <rect width="200" height="200" fill="#FAF7F2"/>
+    <g transform="translate(100,100)">
+      <circle r="60" fill="#FFFFFF"/>
+      <path d="M0,-60 A60,60 0 0,1 51.96,30 L0,0 Z" fill="#EDB590"/>
+      <path d="M51.96,30 A60,60 0 0,1 -51.96,30 L0,0 Z" fill="#E59880"/>
+      <path d="M-51.96,30 A60,60 0 0,1 0,-60 L0,0 Z" fill="#ADA8CC"/>
+      <circle r="18" fill="#FAF7F2"/>
+    </g>
+  </svg>
+</template>
+
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="android-frame.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="wheeltodo.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "warm-start",
+  "platform": "ios",
+  "tabCount": 3,
+  "habitsEnabled": true,
+  "restDay": false,
+  "gcalConnected": true,
+  "spinDuration": 2.9,
+  "fastTimer": true
+}/*EDITMODE-END*/;
+
+const DEVICE = {
+  ios:     { W: 390, H: 800 },
+  android: { W: 400, H: 820 },
+};
+
+function DeviceWithApp({ platform, themeName, tweaks }) {
+  const { W, H } = DEVICE[platform];
+  const inner = (
+    <WheelTodoApp themeName={themeName} platform={platform} deviceWidth={W} tweaks={tweaks} />
+  );
+  if (platform === 'ios') {
+    return (
+      <IOSDevice width={W} height={H} dark={WT_THEMES[themeName].dark}>
+        <div style={{ position: 'absolute', inset: 0, paddingTop: 56 }}>{inner}</div>
+      </IOSDevice>
+    );
+  }
+  return (
+    <AndroidDevice width={W} height={H} dark={WT_THEMES[themeName].dark}>
+      <div style={{ position: 'absolute', left: 8, right: 8, top: 40, bottom: 56 }}>
+        {inner}
+      </div>
+    </AndroidDevice>
+  );
+}
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  return (
+    <>
+      <div className="stage">
+        <div className="frame-wrap">
+          <div className="label">{WT_THEMES[t.theme].label} · {t.platform === 'ios' ? 'iOS' : 'Android'}</div>
+          <DeviceWithApp platform={t.platform} themeName={t.theme} tweaks={t} />
+        </div>
+      </div>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Surface" />
+        <TweakSelect
+          label="Theme"
+          value={t.theme}
+          options={Object.entries(WT_THEMES).map(([k, v]) => ({ value: k, label: v.label }))}
+          onChange={(v) => setTweak('theme', v)}
+        />
+        <TweakRadio
+          label="Device"
+          value={t.platform}
+          options={[{label:'iOS', value:'ios'}, {label:'Android', value:'android'}]}
+          onChange={(v) => setTweak('platform', v)}
+        />
+
+        <TweakSection label="Layout" />
+        <TweakRadio
+          label="Tab count"
+          value={t.tabCount}
+          options={[{label:'2 tabs', value:2}, {label:'3 tabs', value:3}]}
+          onChange={(v) => setTweak('tabCount', v)}
+        />
+        <TweakToggle
+          label="Habits tab"
+          value={t.habitsEnabled}
+          onChange={(v) => setTweak('habitsEnabled', v)}
+        />
+        <TweakToggle
+          label="Calendar connected"
+          value={t.gcalConnected}
+          onChange={(v) => setTweak('gcalConnected', v)}
+        />
+        <TweakToggle
+          label="Rest day"
+          value={t.restDay}
+          onChange={(v) => setTweak('restDay', v)}
+        />
+
+        <TweakSection label="Motion" />
+        <TweakSlider
+          label="Spin duration"
+          value={t.spinDuration} min={1.5} max={6} step={0.1} unit="s"
+          onChange={(v) => setTweak('spinDuration', v)}
+        />
+        <TweakToggle
+          label="Fast timer (10×)"
+          value={t.fastTimer}
+          onChange={(v) => setTweak('fastTimer', v)}
+        />
+
+        <TweakSection label="Notes" />
+        <div style={{ padding: '4px 14px 12px', fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+          One device, all the updates. Switch theme, platform, tab count, etc. from the controls above.
+          Tap empty-state mic to use voice input. Type in the Add sheet to see the AI breakdown CTA.
+          Complete a focus session to see the plant get watered.
+        </div>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

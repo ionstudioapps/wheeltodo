@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WheelTodo · Redesign</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #ECE9E2; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="android-frame.jsx"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="wheeltodo.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "globalTheme": "per-artboard",
+  "tabCount": 3,
+  "habitsEnabled": true,
+  "restDay": false,
+  "spinDuration": 2.9,
+  "fastTimer": true,
+  "showLabels": true,
+  "wheelSize": 300,
+  "deviceScale": 100
+}/*EDITMODE-END*/;
+
+// Each artboard renders an iPhone or Android frame containing our app.
+// Keep the device dimensions fairly large so the wheel breathes.
+const DEVICE = {
+  ios:     { W: 390, H: 800 },
+  android: { W: 400, H: 820 },
+};
+
+function DeviceWithApp({ platform, themeName, tweaks, forceTabCount, forceHabits, forceRestDay, flowStep }) {
+  const { W, H } = DEVICE[platform];
+  let effectiveTweaks = tweaks;
+  if (forceTabCount) effectiveTweaks = { ...effectiveTweaks, tabCount: forceTabCount };
+  if (forceHabits !== undefined) effectiveTweaks = { ...effectiveTweaks, habitsEnabled: forceHabits };
+  if (forceRestDay !== undefined) effectiveTweaks = { ...effectiveTweaks, restDay: forceRestDay };
+  const inner = (
+    <WheelTodoApp themeName={themeName} platform={platform} deviceWidth={W} tweaks={effectiveTweaks} flowStep={flowStep} />
+  );
+  if (platform === 'ios') {
+    return (
+      <IOSDevice width={W} height={H} dark={WT_THEMES[themeName].dark}>
+        <div style={{ position: 'absolute', inset: 0, paddingTop: 56 }}>{inner}</div>
+      </IOSDevice>
+    );
+  }
+  return (
+    <AndroidDevice width={W} height={H} dark={WT_THEMES[themeName].dark}>
+      <div style={{ position: 'absolute', left: 8, right: 8, top: 40, bottom: 56 }}>
+        {inner}
+      </div>
+    </AndroidDevice>
+  );
+}
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const themeKeys = Object.keys(WT_THEMES);
+
+  // Artboard dimensions = device dimensions (no scaling, frame is the artboard)
+  const board = (platform, themeName, idSuffix, opts = {}) => {
+    const { W, H } = DEVICE[platform];
+    const aid = `${themeName}-${platform}-${idSuffix}`;
+    return (
+      <DCArtboard
+        key={aid}
+        id={aid}
+        label={opts.label || `${WT_THEMES[themeName].label} · ${platform === 'ios' ? 'iOS' : 'Android'}`}
+        width={W + 16}
+        height={H + 24}
+      >
+        <div style={{
+          width: '100%', height: '100%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'transparent',
+        }}>
+          <DeviceWithApp platform={platform} themeName={themeName} tweaks={t} forceTabCount={opts.forceTabCount} forceHabits={opts.forceHabits} forceRestDay={opts.forceRestDay} flowStep={opts.flowStep} />
+        </div>
+      </DCArtboard>
+    );
+  };
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection
+          id="ai-breakdown"
+          title="AI breakdown · big task, gentle on-ramp"
+          subtitle="When a task feels too big to start, tap the dashed accent button in the Add sheet. AI asks two quick questions, then sketches a path: 4 small subtasks the user reviews and adds. Conversation-style — no form-fills, no friction."
+        >
+          {board('ios', 'warm-start', 'ai-1', { flowStep: 'add', label: '1 · Add sheet · "Ship the proposal" · break-down CTA visible' })}
+          {board('ios', 'warm-start', 'ai-2', { flowStep: 'add', label: '2 · Tap CTA → 2 questions → 4 subtasks · tap to add' })}
+          {board('ios', 'slow-down', 'ai-3', { flowStep: 'add', label: '3 · Dark · same flow' })}
+          {board('ios', 'dark-a11y', 'ai-4', { flowStep: 'add', label: '4 · High contrast' })}
+        </DCSection>
+
+        <DCSection
+          id="rest-mode"
+          title="Rest mode · permission to pause"
+          subtitle="Rest mode protects your streak when you genuinely can't do anything today. The catch: you have to actively read the pledge and promise not to feel guilty. Entry from You → Settings or the empty-state link. The active-rest screen replaces the wheel entirely — no nag, no count, just a moon and a held streak."
+        >
+          {board('ios', 'warm-start', 'rest-entry',  { flowStep: 'empty', forceRestDay: false, label: '1 · Entry · empty wheel → “Take a rest day” link' })}
+          {board('ios', 'warm-start', 'rest-active', { flowStep: 'empty', forceRestDay: true,  label: '3 · Rest day on · “Today is yours.” · streak holds' })}
+          {board('ios', 'slow-down', 'rest-entry',  { flowStep: 'empty', forceRestDay: false, label: 'Dark · entry' })}
+          {board('ios', 'slow-down', 'rest-active', { flowStep: 'empty', forceRestDay: true,  label: 'Dark · active' })}
+        </DCSection>
+
+        <DCSection
+          id="voice"
+          title="Voice · tell me your day"
+          subtitle="Open the app while you’re still in bed, tap the mic, mumble your day, the wheel fills itself. Two entry points: the mic icon in the top bar (always), and the secondary CTA on the empty state. Tap any artboard's mic to walk through listening → parsing → review live."
+        >
+          {board('ios', 'warm-start', 'vo-entry-1', { flowStep: 'empty', label: '1 · Empty wheel · tap “Tell me your day”' })}
+          {board('ios', 'warm-start', 'vo-entry-2', { flowStep: 'empty', label: '2 · Or use the mic in the top bar' })}
+          {board('ios', 'slow-down', 'vo-entry-3', { flowStep: 'empty', label: '3 · Same flow · dark' })}
+          {board('ios', 'dark-a11y', 'vo-entry-4', { flowStep: 'empty', label: '4 · High-contrast dark' })}
+        </DCSection>
+
+        <DCSection
+          id="storyboard"
+          title="Empty → add → spin → focus → done"
+          subtitle="Six moments in a typical morning. Each frame is the live app frozen at that step — the wheel really spins, the add sheet really opens, the timer really counts down. Scroll horizontally through the day."
+        >
+          {board('ios', 'warm-start', 'sb1', { flowStep: 'empty',  label: '1 · 8:42 · fresh start' })}
+          {board('ios', 'warm-start', 'sb2', { flowStep: 'add',    label: '2 · 8:43 · adding the first task' })}
+          {board('ios', 'warm-start', 'sb3', { flowStep: 'ready',  label: '3 · 8:46 · wheel ready' })}
+          {board('ios', 'warm-start', 'sb4', { flowStep: 'result', label: '4 · 8:46 · you got it' })}
+          {board('ios', 'warm-start', 'sb5', { flowStep: 'focus',  label: '5 · 8:49 · in focus' })}
+          {board('ios', 'warm-start', 'sb6', { flowStep: 'done',   label: '6 · 9:11 · 1 of 5 down' })}
+        </DCSection>
+
+        <DCSection
+          id="habits-toggle"
+          title="Habits · on or off"
+          subtitle="Some people thrive on the heatmap; others find a wall of dots intimidating. Toggle it from You → Settings. When off, the tab bar collapses to Tasks · You and the app stays quiet about streaks."
+        >
+          {board('ios', 'warm-start', 'hab-on',  { forceTabCount: 3, forceHabits: true,  label: 'Habits ON · 3 tabs' })}
+          {board('ios', 'warm-start', 'hab-off', { forceTabCount: 3, forceHabits: false, label: 'Habits OFF · 2 tabs (You stays)' })}
+          {board('ios', 'slow-down', 'hab-on',  { forceTabCount: 3, forceHabits: true,  label: 'Habits ON · dark' })}
+          {board('ios', 'slow-down', 'hab-off', { forceTabCount: 3, forceHabits: false, label: 'Habits OFF · dark' })}
+        </DCSection>
+
+        <DCSection
+          id="ia-compare"
+          title="Two tabs or three?"
+          subtitle="Left: original 2-tab IA (Wheel · List, Work/Rest as a toggle). Right: proposed 3-tab IA (Tasks · Habits · You). Habits get their own home with a heatmap hero — the wheel stays purely for one-shot tasks. Tap the Habits tab on the right to see it."
+        >
+          {board('ios', 'warm-start', '2tab', { forceTabCount: 2, label: '2 tabs · Wheel + List' })}
+          {board('ios', 'warm-start', '3tab', { forceTabCount: 3, label: '3 tabs · Tasks + Habits + You' })}
+          {board('ios', 'slow-down', '2tab', { forceTabCount: 2, label: '2 tabs · dark' })}
+          {board('ios', 'slow-down', '3tab', { forceTabCount: 3, label: '3 tabs · dark' })}
+        </DCSection>
+
+        <DCSection
+          id="hero"
+          title="Spin · the redesign"
+          subtitle="Four themes side-by-side. Use the Tweaks panel to flip the whole grid between 2-tab and 3-tab IA. Wheel spins, focus timer counts down, sheets work."
+        >
+          {themeKeys.map(k => board('ios', k, 'hero'))}
+        </DCSection>
+
+        <DCSection
+          id="cross-platform"
+          title="iOS vs Android"
+          subtitle="Same app, native-feeling navigation. Tab bar floats on iOS, sits flush on Android. Status bar / nav chrome adapts."
+        >
+          {board('ios', 'warm-start', 'cp')}
+          {board('android', 'warm-start', 'cp')}
+          {board('ios', 'slow-down', 'cp')}
+          {board('android', 'slow-down', 'cp')}
+        </DCSection>
+
+        <DCSection
+          id="accessible"
+          title="Accessible variants"
+          subtitle="High-contrast themes pass 4.5:1 against their backgrounds. Same layout, same components."
+        >
+          {board('ios', 'light-a11y', 'a')}
+          {board('android', 'light-a11y', 'a')}
+          {board('ios', 'dark-a11y', 'a')}
+          {board('android', 'dark-a11y', 'a')}
+        </DCSection>
+
+        <DCSection
+          id="notes"
+          title="What changed"
+          subtitle=""
+        >
+          <DCArtboard id="diff" label="Reduction" width={520} height={780}>
+            <div style={{
+              width: '100%', height: '100%', background: '#FAF7F2',
+              padding: 36, overflow: 'auto',
+              fontFamily: 'Plus Jakarta Sans, sans-serif', color: '#2A2520',
+            }}>
+              <div style={{
+                fontFamily: '"Instrument Serif", serif', fontStyle: 'italic',
+                fontSize: 44, letterSpacing: '-0.02em', lineHeight: 1.05,
+              }}>Less, but louder.</div>
+              <div style={{ fontSize: 14, color: '#8A7E7A', marginTop: 8, lineHeight: 1.6, maxWidth: 380 }}>
+                The original had 4 tabs, a separate header, two stacked cards above the wheel,
+                a week-bubble row, an accordion, and a milestone card — all on one screen.
+                Here's how the redesign collapses that.
+              </div>
+
+              <div style={{ marginTop: 28, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                {[
+                  { was: '4 bottom tabs · Spin · Tasks · Rest · History', now: '3 tabs · Tasks · Habits · You' },
+                  { was: 'Rest tab', now: 'Habits tab · recurring activities live here' },
+                  { was: 'Decision paralysis = wheel for everything', now: 'Wheel only for one-shot Tasks' },
+                  { was: 'History tab', now: 'Streak chip → sheet · or inside You' },
+                  { was: 'Profile in stack nav', now: 'You · full tab · identity + theme + settings' },
+                  { was: '"How do I use it" accordion', now: 'Removed · slice + button speak for themselves' },
+                  { was: 'Week M-T-W bubbles above wheel', now: '14-week heatmap on the Habits tab' },
+                  { was: 'Milestone card', now: 'Ambient progress arc around the wheel' },
+                  { was: 'Daily goal text line', now: 'Lives in the wheel hub · "2/4 today"' },
+                  { was: 'Lucide icons on slices', now: 'Single-letter initials · cleaner at any size' },
+                  { was: 'Headline: plain bold sans', now: 'Editorial serif italic accent · Instrument Serif' },
+                  { was: 'Rest = mode toggle', now: 'Rest activities = habits · checked off daily' },
+                ].map((row, i) => (
+                  <div key={i} style={{
+                    padding: 14, borderRadius: 16,
+                    background: '#FFFFFF',
+                  }}>
+                    <div style={{
+                      fontSize: 10, color: '#B0A8A4', fontWeight: 600,
+                      letterSpacing: '0.12em', textTransform: 'uppercase',
+                    }}>Was</div>
+                    <div style={{ fontSize: 13, color: '#8A7E7A', marginTop: 4, textDecoration: 'line-through', textDecorationColor: '#D8C9C0' }}>{row.was}</div>
+                    <div style={{
+                      fontSize: 10, color: '#E59880', fontWeight: 600,
+                      letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 10,
+                    }}>Now</div>
+                    <div style={{ fontSize: 13, color: '#2A2520', marginTop: 4, fontWeight: 500 }}>{row.now}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Layout" />
+        <TweakRadio
+          label="Tab count"
+          value={t.tabCount}
+          options={[{label:'2 tabs', value:2}, {label:'3 tabs', value:3}]}
+          onChange={(v) => setTweak('tabCount', v)}
+        />
+        <TweakToggle
+          label="Habits tab"
+          value={t.habitsEnabled}
+          onChange={(v) => setTweak('habitsEnabled', v)}
+        />
+        <TweakToggle
+          label="Rest day"
+          value={t.restDay}
+          onChange={(v) => setTweak('restDay', v)}
+        />
+        <TweakToggle
+          label="Slice initials"
+          value={t.showLabels}
+          onChange={(v) => setTweak('showLabels', v)}
+        />
+
+        <TweakSection label="Motion" />
+        <TweakSlider
+          label="Spin duration"
+          value={t.spinDuration} min={1.5} max={6} step={0.1} unit="s"
+          onChange={(v) => setTweak('spinDuration', v)}
+        />
+        <TweakToggle
+          label="Fast timer (10×)"
+          value={t.fastTimer}
+          onChange={(v) => setTweak('fastTimer', v)}
+        />
+
+        <TweakSection label="Notes" />
+        <div style={{ padding: '4px 14px 12px', fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+          Each artboard is an independent app — they don't share state.
+          Try spinning, then tap Start focus to watch the timer ring.
+          Theme can be changed per-device from the avatar → Theme.
+        </div>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
