@@ -107,7 +107,7 @@ export const THEMES: Record<ThemeName, Theme> = {
 
   'light-a11y': {
     name: 'light-a11y',
-    label: 'Light (Accessible)',
+    label: 'Gentle Boost',
     dark: false,
     colors: {
       bgScreen:      '#FFFFFF',
@@ -134,7 +134,7 @@ export const THEMES: Record<ThemeName, Theme> = {
 
   'dark-a11y': {
     name: 'dark-a11y',
-    label: 'Dark (Accessible)',
+    label: 'Grounding Mode',
     dark: true,
     colors: {
       bgScreen:      '#0F0D18',
