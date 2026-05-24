@@ -1,7 +1,13 @@
-import { callAnthropic, cors, CORS } from "../_shared/anthropic.ts";
+import { callAnthropic, cors, CORS, requireAuth } from "../_shared/anthropic.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  try {
+    await requireAuth(req);
+  } catch {
+    return cors({ error: "Unauthorized" }, 401);
+  }
 
   const { transcript } = await req.json();
   if (!transcript?.trim()) return cors({ error: "transcript is required" }, 400);

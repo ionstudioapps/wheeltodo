@@ -43,22 +43,33 @@ export interface DbSettings {
   daily_goal: number;
   default_timer_minutes: number;
   rest_goal_tier: string;
+  theme: string;
+  categories: string[];
+  spin_count: number;
+}
+
+export interface DbRestDay {
+  date: string;       // ISO date "YYYY-MM-DD"
+  is_complete: boolean;
+  partial_pct: number | null;
 }
 
 // ─── Load ─────────────────────────────────────────────────────────────────────
 
 export async function dbLoad(userId: string) {
-  const [tasksRes, completedRes, restRes, settingsRes] = await Promise.all([
-    sb().from('tasks').select('*').eq('user_id', userId).order('created_at'),
+  const [tasksRes, completedRes, restRes, settingsRes, restDaysRes] = await Promise.all([
+    sb().from('tasks').select('*').eq('user_id', userId).order('position'),
     sb().from('completed_tasks').select('*').eq('user_id', userId).order('completed_at', { ascending: false }),
     sb().from('rest_tasks').select('*').eq('user_id', userId).eq('is_preset', false),
     sb().from('user_settings').select('*').eq('user_id', userId).maybeSingle(),
+    sb().from('rest_days').select('*').eq('user_id', userId).order('date', { ascending: false }).limit(365),
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tasks: DbTask[] = (tasksRes.data ?? []).map((r: any) => ({
     id: r.id, name: r.name, minutes: r.minutes,
     color: r.color, icon: r.icon, category: r.category ?? undefined,
+    parentTaskId: r.parent_task_id ?? undefined,
   }));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,20 +83,29 @@ export async function dbLoad(userId: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const customRestTaskIds: string[] = (restRes.data ?? []).map((r: any) => r.id);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const restDays: DbRestDay[] = (restDaysRes.data ?? []).map((r: any) => ({
+    date: r.date,
+    is_complete: r.is_complete,
+    partial_pct: r.partial_pct,
+  }));
+
   return {
     tasks,
     completedTasks,
     customRestTaskIds,
+    restDays,
     settings: settingsRes.data as DbSettings | null,
   };
 }
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
-export function dbUpsertTask(userId: string, task: DbTask, position: number) {
+export function dbUpsertTask(userId: string, task: DbTask & { parentTaskId?: string }, position: number) {
   sb().from('tasks').upsert(
     { id: task.id, user_id: userId, name: task.name, minutes: task.minutes,
-      color: task.color, icon: task.icon, category: task.category ?? null, position },
+      color: task.color, icon: task.icon, category: task.category ?? null,
+      parent_task_id: task.parentTaskId ?? null, position },
     { onConflict: 'id,user_id' }
   ).then(() => {}, () => {});
 }
@@ -133,13 +153,31 @@ export function dbUpsertSettings(userId: string, patch: {
   defaultTimerMinutes?: number;
   restGoalTier?: DbRestGoalTier;
   isPremium?: boolean;
+  theme?: string;
+  categories?: string[];
+  spinCount?: number;
 }) {
   const row: Record<string, unknown> = { user_id: userId, updated_at: new Date().toISOString() };
   if (patch.dailyGoal !== undefined) row.daily_goal = patch.dailyGoal;
   if (patch.defaultTimerMinutes !== undefined) row.default_timer_minutes = patch.defaultTimerMinutes;
   if (patch.restGoalTier !== undefined) row.rest_goal_tier = patch.restGoalTier;
   if (patch.isPremium !== undefined) row.is_premium = patch.isPremium;
+  if (patch.theme !== undefined) row.theme = patch.theme;
+  if (patch.categories !== undefined) row.categories = patch.categories;
+  if (patch.spinCount !== undefined) row.spin_count = patch.spinCount;
   sb().from('user_settings').upsert(row, { onConflict: 'user_id' })
+    .then(() => {}, () => {});
+}
+
+export function dbUpsertRestDay(userId: string, day: DbRestDay) {
+  sb().from('rest_days').upsert(
+    { user_id: userId, date: day.date, is_complete: day.is_complete, partial_pct: day.partial_pct },
+    { onConflict: 'user_id,date' }
+  ).then(() => {}, () => {});
+}
+
+export function dbDeleteRestDay(userId: string, date: string) {
+  sb().from('rest_days').delete().eq('user_id', userId).eq('date', date)
     .then(() => {}, () => {});
 }
 

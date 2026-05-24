@@ -291,18 +291,23 @@ export function SpinTab({ onNavigateToTasks }: SpinTabProps) {
   const spinWheel = useCallback(() => {
     if (tasks.length === 0 || spinning) return;
     setSpinning(true);
-    const selectedIndex = Math.floor(Math.random() * tasks.length);
     const sliceAngle = 360 / tasks.length;
-    const targetSliceCenter = -(selectedIndex + 0.5) * sliceAngle;
+    // Pick a random slice center (add a tiny jitter so it never stops exactly on a boundary)
+    const selectedIndex = Math.floor(Math.random() * tasks.length);
+    const jitter = (Math.random() - 0.5) * sliceAngle * 0.6;
+    const targetSliceCenter = -(selectedIndex + 0.5) * sliceAngle + jitter;
     const normalizedTarget = ((targetSliceCenter % 360) + 360) % 360;
+    // Normalize current rotation to prevent float accumulation
     const currentNorm = ((rotationRef.current % 360) + 360) % 360;
     let delta = normalizedTarget - currentNorm;
     if (delta < 0) delta += 360;
-    const extraSpins = (5 + Math.floor(Math.random() * 4)) * 360;
+    const extraSpins = (6 + Math.floor(Math.random() * 6)) * 360;
     const totalDelta = extraSpins + delta;
-    const startRot = rotationRef.current;
+    // Reset ref to normalized value to prevent unbounded growth
+    const startRot = currentNorm;
+    rotationRef.current = startRot;
     const targetRot = startRot + totalDelta;
-    const duration = 3200 + Math.random() * 800;
+    const duration = 3000 + Math.random() * 1200;
     const startTime = performance.now();
 
     const frame = (now: number) => {
@@ -317,7 +322,16 @@ export function SpinTab({ onNavigateToTasks }: SpinTabProps) {
         rotationRef.current = targetRot;
         setRotation(targetRot);
         setSpinning(false);
-        setPicked(tasks[selectedIndex]);
+        // Derive winner from final rotation to guarantee visual/logical match
+        const finalNorm = ((targetRot % 360) + 360) % 360;
+        let winnerIndex = 0;
+        let minDist = Infinity;
+        for (let i = 0; i < tasks.length; i++) {
+          const center = ((i + 0.5) * sliceAngle - finalNorm + 360) % 360;
+          const dist = Math.min(center, 360 - center);
+          if (dist < minDist) { minDist = dist; winnerIndex = i; }
+        }
+        setPicked(tasks[winnerIndex]);
         incrementSpinCount();
       }
     };

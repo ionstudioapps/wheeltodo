@@ -13,7 +13,7 @@ import React, {
 import { type AchievementValues } from "../utils/achievements";
 import {
   dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted,
-  dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings, dbBulkPush,
+  dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings, dbUpsertRestDay, dbDeleteRestDay, dbBulkPush,
 } from "../utils/db";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -278,17 +278,29 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
 
     // For logged-in users: load cloud data (sync available to all signed-in users)
     if (userId) {
-      dbLoad(userId).then(({ tasks: dbTasks, completedTasks: dbCompleted, customRestTaskIds, settings }) => {
-        const premium = settings?.is_premium ?? false;
-        setIsPremium(premium);
-        lsSet(KEYS.isPremium, premium);
-
+      dbLoad(userId).then(({ tasks: dbTasks, completedTasks: dbCompleted, customRestTaskIds, restDays, settings }) => {
         if (dbTasks.length > 0) setTasks(dbTasks);
         if (dbCompleted.length > 0) setCompletedTasks(dbCompleted);
+
+        if (restDays.length > 0) {
+          setCompletedRestDays(
+            restDays.filter((d) => d.is_complete).map((d) => new Date(d.date))
+          );
+          setPartialRestDays(
+            restDays.filter((d) => !d.is_complete && d.partial_pct != null)
+              .map((d) => ({ date: new Date(d.date), pct: d.partial_pct! }))
+          );
+        }
+
         if (settings) {
           setDailyGoalState(settings.daily_goal);
           setDefaultTimerMinutesState(settings.default_timer_minutes);
           setRestGoalTierState(settings.rest_goal_tier as RestGoalTier);
+          const premium = settings.is_premium ?? false;
+          setIsPremium(premium);
+          lsSet(KEYS.isPremium, premium);
+          if (settings.categories?.length) setCategories(settings.categories);
+          if (settings.spin_count) setSpinCount(settings.spin_count);
         }
       }).catch(() => {});
     }
@@ -320,9 +332,9 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   // Sync settings to Supabase for all signed-in users
   useEffect(() => {
     if (!loaded || !userId) return;
-    dbUpsertSettings(userId, { dailyGoal, defaultTimerMinutes, restGoalTier });
+    dbUpsertSettings(userId, { dailyGoal, defaultTimerMinutes, restGoalTier, categories, spinCount });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dailyGoal, defaultTimerMinutes, restGoalTier, loaded, userId]);
+  }, [dailyGoal, defaultTimerMinutes, restGoalTier, categories, spinCount, loaded, userId]);
 
   // ─── Task actions ────────────────────────────────────────────────────────────
 
@@ -550,19 +562,30 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     if (!loaded) return;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayIso = today.toISOString().slice(0, 10);
     const pct = restGoalMinutes > 0 ? Math.min(restMinutesToday / restGoalMinutes, 1) : 0;
     const goalMet = pct >= 1;
+    const { userId: uid } = syncRef.current;
 
     setCompletedRestDays((prev) => {
       const alreadyIn = prev.some((d) => d.getTime() === today.getTime());
-      if (goalMet && !alreadyIn) return [...prev, today];
-      if (!goalMet && alreadyIn) return prev.filter((d) => d.getTime() !== today.getTime());
+      if (goalMet && !alreadyIn) {
+        if (uid) dbUpsertRestDay(uid, { date: todayIso, is_complete: true, partial_pct: null });
+        return [...prev, today];
+      }
+      if (!goalMet && alreadyIn) {
+        if (uid) dbDeleteRestDay(uid, todayIso);
+        return prev.filter((d) => d.getTime() !== today.getTime());
+      }
       return prev;
     });
 
     setPartialRestDays((prev) => {
       const filtered = prev.filter((d) => d.date.getTime() !== today.getTime());
-      if (pct > 0 && pct < 1) return [...filtered, { date: today, pct }];
+      if (pct > 0 && pct < 1) {
+        if (uid) dbUpsertRestDay(uid, { date: todayIso, is_complete: false, partial_pct: Math.round(pct * 100) });
+        return [...filtered, { date: today, pct }];
+      }
       return filtered;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
