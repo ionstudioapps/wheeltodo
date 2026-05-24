@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { HelpCircle, ChevronDown, ChevronUp, Timer, Plus, Trash2, Sparkles, Lock, Mic } from "lucide-react";
 import { useApp, COLORS, type Task } from "@/context/AppContext";
 import { Confetti } from "@/components/Confetti";
+import { GentlePush } from "@/components/GentlePush";
 import { useSubscription } from "@/hooks/useSubscription";
 import { fnUrl, fnHeaders } from "@/lib/functions";
 
@@ -954,6 +955,9 @@ export function TasksTab() {
 
       {/* FAQ */}
       <TasksFaqAccordion />
+
+      {/* Gentle push */}
+      <GentlePush mode="tasks" />
 
       {/* Stats */}
       {todayCompleted.length > 0 && (

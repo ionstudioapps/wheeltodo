@@ -164,6 +164,8 @@ interface AppContextType {
 
   isPremium: boolean;
   activatePremium: () => Promise<void>;
+
+  logQuickWin: (name: string, minutes: number) => void;
 }
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
@@ -525,6 +527,22 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const setDefaultTimerMinutes = (m: number) => setDefaultTimerMinutesState(m);
   const markOnboardingSeen = useCallback(() => setHasSeenOnboarding(true), []);
 
+  const logQuickWin = useCallback((name: string, minutes: number) => {
+    const win: CompletedTask = {
+      id: `qw_${Date.now()}`,
+      taskId: `qw_${Date.now()}`,
+      taskName: name,
+      color: COLORS[0],
+      icon: "Sparkles",
+      minutesEstimated: minutes,
+      minutesActual: minutes,
+      completedAt: new Date(),
+    };
+    setCompletedTasks((prev) => [win, ...prev]);
+    const { userId: uid } = syncRef.current;
+    if (uid) dbInsertCompleted(uid, win);
+  }, []);
+
   const activatePremium = useCallback(async () => {
     setIsPremium(true);
     lsSet(KEYS.isPremium, true);
@@ -685,6 +703,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     restStreak, bestRestStreak,
     hasSeenOnboarding, markOnboardingSeen,
     isPremium, activatePremium,
+    logQuickWin,
   };
 
   return (

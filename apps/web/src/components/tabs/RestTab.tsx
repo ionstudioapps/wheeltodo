@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useApp, type RestTask, type DailyMood, type RestCategory } from "@/context/AppContext";
 import { Confetti } from "@/components/Confetti";
+import { GentlePush } from "@/components/GentlePush";
 
 // ─── Category meta ────────────────────────────────────────────────────────────
 
@@ -338,6 +339,9 @@ export function RestTab() {
       )}
 
       {todayMood === null && <EnergyCheckIn onSelect={setTodayMood} />}
+
+      {/* Gentle push */}
+      <GentlePush mode="rest" />
 
       {CATEGORIES_ORDER.map((cat) => {
         const catTasks = tasksByCategory[cat];
