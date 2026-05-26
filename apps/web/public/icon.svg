@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="116" fill="#FAF7F2"/>
+  <!-- Wheel slices -->
+  <path d="M256 256 L256 80 A176 176 0 0 1 432.3 352Z" fill="#EDB590"/>
+  <path d="M256 256 L432.3 352 A176 176 0 0 1 79.7 352Z" fill="#E59880"/>
+  <path d="M256 256 L79.7 352 A176 176 0 0 1 256 80Z" fill="#ADA8CC"/>
+  <!-- Center hub -->
+  <circle cx="256" cy="256" r="66" fill="#FAF7F2"/>
+  <!-- Tick marker -->
+  <polygon points="256,68 246,90 266,90" fill="#2A2520"/>
+</svg>

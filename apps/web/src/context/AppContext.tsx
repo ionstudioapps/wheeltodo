@@ -15,6 +15,7 @@ import {
   dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted,
   dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings, dbUpsertRestDay, dbDeleteRestDay, dbBulkPush,
 } from "../utils/db";
+import { THEMES, type ThemeName } from "@todo/shared";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -166,6 +167,11 @@ interface AppContextType {
   activatePremium: () => Promise<void>;
 
   logQuickWin: (name: string, minutes: number) => void;
+
+  theme: ThemeName;
+  setTheme: (t: ThemeName) => void;
+  themeAuto: boolean;
+  setThemeAuto: (auto: boolean) => void;
 }
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
@@ -205,7 +211,21 @@ const KEYS = {
   defaultTimerMinutes: "wt.defaultTimerMinutes",
   hasSeenOnboarding: "wt.hasSeenOnboarding",
   isPremium: "wt.isPremium",
+  theme: "wt.theme",
+  themeAuto: "wt.themeAuto",
 } as const;
+
+function applyTheme(t: ThemeName) {
+  if (typeof document === "undefined") return;
+  const html = document.documentElement;
+  (Object.keys(THEMES) as ThemeName[]).forEach((name) => html.classList.remove(`theme-${name}`));
+  if (t !== "warm-start") html.classList.add(`theme-${t}`);
+}
+
+function osTheme(): ThemeName {
+  if (typeof window === "undefined") return "warm-start";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "slow-down" : "warm-start";
+}
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
@@ -229,6 +249,8 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const [defaultTimerMinutes, setDefaultTimerMinutesState] = useState(25);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
+  const [themeAuto, setThemeAutoState] = useState(true);
+  const [theme, setThemeState] = useState<ThemeName>("warm-start");
   // Ref so mutation closures always read current userId without needing re-memoization
   const syncRef = useRef({ userId });
   useEffect(() => { syncRef.current = { userId }; }, [userId]);
@@ -275,6 +297,13 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     setDefaultTimerMinutesState(ls<number>(KEYS.defaultTimerMinutes, 25));
     setHasSeenOnboarding(ls<boolean>(KEYS.hasSeenOnboarding, false));
     setIsPremium(ls<boolean>(KEYS.isPremium, false));
+
+    const savedAuto = ls<boolean | null>(KEYS.themeAuto, null);
+    const isAuto = savedAuto === null ? true : savedAuto; // first install → auto
+    setThemeAutoState(isAuto);
+    const resolved = isAuto ? osTheme() : ls<ThemeName>(KEYS.theme, "warm-start");
+    setThemeState(resolved);
+    applyTheme(resolved);
 
     setLoaded(true);
 
@@ -331,6 +360,36 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   useEffect(() => { if (loaded) lsSet(KEYS.defaultTimerMinutes, defaultTimerMinutes); }, [defaultTimerMinutes, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.hasSeenOnboarding, hasSeenOnboarding); }, [hasSeenOnboarding, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.isPremium, isPremium); }, [isPremium, loaded]);
+
+  // Listen for OS dark/light changes when auto is on
+  useEffect(() => {
+    if (!themeAuto) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    function handleChange() {
+      const next = mq.matches ? "slow-down" : "warm-start";
+      setThemeState(next);
+      applyTheme(next);
+    }
+    mq.addEventListener("change", handleChange);
+    return () => mq.removeEventListener("change", handleChange);
+  }, [themeAuto]);
+
+  const setTheme = useCallback((t: ThemeName) => {
+    setThemeState(t);
+    applyTheme(t);
+    lsSet(KEYS.theme, t);
+  }, []);
+
+  const setThemeAuto = useCallback((auto: boolean) => {
+    setThemeAutoState(auto);
+    lsSet(KEYS.themeAuto, auto);
+    if (auto) {
+      const next = osTheme();
+      setThemeState(next);
+      applyTheme(next);
+    }
+  }, []);
+
   // Sync settings to Supabase for all signed-in users
   useEffect(() => {
     if (!loaded || !userId) return;
@@ -704,6 +763,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     hasSeenOnboarding, markOnboardingSeen,
     isPremium, activatePremium,
     logQuickWin,
+    theme, setTheme, themeAuto, setThemeAuto,
   };
 
   return (

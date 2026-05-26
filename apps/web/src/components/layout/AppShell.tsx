@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { RotateCcw, ListTodo, Moon, BarChart2, LogOut, User, X, Flame, Minus, Plus, Trophy, Clock, Zap } from "lucide-react";
-import { getSupabaseClient } from "@todo/shared";
+import { RotateCcw, ListTodo, Moon, BarChart2, LogOut, User, X, Flame, Minus, Plus, Trophy, Clock, Zap, Check } from "lucide-react";
+import { getSupabaseClient, THEMES, type ThemeName } from "@todo/shared";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { useApp, type RestGoalTier, REST_GOAL_MINUTES } from "@/context/AppContext";
 import { ACHIEVEMENT_DEFS, getUnlockedTierIds } from "@/utils/achievements";
@@ -236,6 +236,7 @@ function ProfileModal({ user, onClose, onSignOut }: ProfileModalProps) {
     categories, addCategory, removeCategory,
     completedTasks,
     achievementValues,
+    theme, setTheme, themeAuto, setThemeAuto,
   } = useApp();
 
   const unlockedIds = getUnlockedTierIds(achievementValues);
@@ -486,6 +487,72 @@ function ProfileModal({ user, onClose, onSignOut }: ProfileModalProps) {
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Tasks to complete each day</p>
                 </div>
                 <Stepper value={dailyGoal} min={1} max={20} onChange={setDailyGoal} />
+              </div>
+
+              <div className="h-px" style={{ background: 'var(--bg-track)' }} />
+
+              {/* Theme */}
+              <div>
+                <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>Theme</p>
+
+                {/* Auto toggle */}
+                <button
+                  onClick={() => setThemeAuto(!themeAuto)}
+                  className="flex items-center justify-between w-full rounded-xl px-3.5 py-2.5 mb-3 transition-colors"
+                  style={{ background: 'var(--bg-input)' }}
+                >
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Use device theme</span>
+                  <div
+                    className="relative w-10 h-6 rounded-full transition-colors"
+                    style={{ background: themeAuto ? 'var(--accent)' : 'var(--bg-track)' }}
+                  >
+                    <div
+                      className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
+                      style={{ transform: themeAuto ? 'translateX(18px)' : 'translateX(2px)' }}
+                    />
+                  </div>
+                </button>
+
+                {/* Theme cards */}
+                <div
+                  className="grid grid-cols-2 gap-2 transition-opacity"
+                  style={{ opacity: themeAuto ? 0.4 : 1, pointerEvents: themeAuto ? 'none' : 'auto' }}
+                >
+                  {(Object.values(THEMES) as typeof THEMES[ThemeName][]).map((t) => {
+                    const isActive = !themeAuto && theme === t.name;
+                    const conicStops = (t.colors.wheel as readonly string[])
+                      .map((c, i, a) => `${c} ${(i / a.length) * 100}% ${((i + 1) / a.length) * 100}%`)
+                      .join(', ');
+                    return (
+                      <button
+                        key={t.name}
+                        onClick={() => setTheme(t.name)}
+                        className="rounded-2xl p-3 flex flex-col gap-2.5 border-2 transition-all text-left relative"
+                        style={{
+                          background: t.colors.bgScreen,
+                          borderColor: isActive ? t.colors.accent : t.colors.bgInput,
+                        }}
+                      >
+                        <div
+                          className="w-10 h-10 rounded-full shrink-0"
+                          style={{ background: `conic-gradient(${conicStops})` }}
+                        />
+                        <div>
+                          <span className="text-xs font-bold block leading-tight" style={{ color: t.colors.textPrimary }}>{t.label}</span>
+                          <span className="text-[10px] leading-tight" style={{ color: t.colors.textSecondary }}>{t.dark ? 'Dark' : 'Light'}</span>
+                        </div>
+                        {isActive && (
+                          <div
+                            className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
+                            style={{ background: t.colors.accent }}
+                          >
+                            <Check size={9} strokeWidth={3} color={t.dark ? '#000' : '#fff'} />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="h-px" style={{ background: 'var(--bg-track)' }} />

@@ -10,11 +10,17 @@
     "dev:web": "npm run dev -w apps/web",
     "dev:mobile": "npm run start -w apps/mobile",
     "lint": "npm run lint -w apps/web",
-    "typecheck": "npm run typecheck -w packages/shared"
+    "typecheck": "npm run typecheck -w packages/shared",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "gen-icons": "node scripts/gen-icons.mjs"
   },
   "overrides": {
     "react": "19.2.0",
     "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.7"
   }
 }
-

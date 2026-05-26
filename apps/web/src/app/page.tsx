@@ -11,6 +11,7 @@ import { RestTab } from "@/components/tabs/RestTab";
 import { HistoryTab } from "@/components/tabs/HistoryTab";
 import { Onboarding } from "@/components/Onboarding";
 import { getSupabaseClient } from "@todo/shared";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // ─── Authenticated app ────────────────────────────────────────────────────────
 
@@ -80,5 +81,9 @@ export default function Home() {
   }
 
   // Login is optional — show the app immediately, gate only premium features.
-  return <AuthenticatedApp user={user} onSignOut={() => setUser(null)} />;
+  return (
+    <ErrorBoundary>
+      <AuthenticatedApp user={user} onSignOut={() => setUser(null)} />
+    </ErrorBoundary>
+  );
 }
