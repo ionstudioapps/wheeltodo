@@ -15,6 +15,7 @@ import {
   dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted,
   dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings, dbBulkPush,
 } from "../utils/db";
+import { THEMES, type ThemeName } from "@todo/shared";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,7 +89,7 @@ export const PRESET_REST_TASKS: RestTask[] = [
 ];
 
 // Default wheel colours — warm-start theme. Override per-theme via CSS --wheel-N vars.
-export const COLORS = ["#EDB590", "#E59880", "#9DC4BC", "#F0D29D", "#ADA8CC", "#D4A5C8"];
+export const COLORS = ["#EDB590", "#E59880", "#9DC4BC", "#F0D29D", "#ADA8CC", "#D4A5C8", "#BCD4A5", "#EDBDAC"];
 
 const DEFAULT_CATEGORIES = ["Work", "Personal", "Learning", "Health"];
 
@@ -164,6 +165,9 @@ interface AppContextType {
 
   isPremium: boolean;
   activatePremium: () => Promise<void>;
+
+  theme: ThemeName;
+  setTheme: (t: ThemeName) => void;
 }
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
@@ -187,6 +191,13 @@ function lsSet(key: string, value: unknown) {
   }
 }
 
+function applyTheme(t: ThemeName) {
+  if (typeof document === "undefined") return;
+  const html = document.documentElement;
+  Object.keys(THEMES).forEach((name) => html.classList.remove(`theme-${name}`));
+  if (t !== 'warm-start') html.classList.add(`theme-${t}`);
+}
+
 const KEYS = {
   tasks: "wt.tasks",
   completedTasks: "wt.completedTasks",
@@ -203,6 +214,7 @@ const KEYS = {
   defaultTimerMinutes: "wt.defaultTimerMinutes",
   hasSeenOnboarding: "wt.hasSeenOnboarding",
   isPremium: "wt.isPremium",
+  theme: "wt.theme",
 } as const;
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -227,6 +239,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const [defaultTimerMinutes, setDefaultTimerMinutesState] = useState(25);
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
+  const [theme, setThemeState] = useState<ThemeName>('warm-start');
   // Ref so mutation closures always read current userId without needing re-memoization
   const syncRef = useRef({ userId });
   useEffect(() => { syncRef.current = { userId }; }, [userId]);
@@ -273,6 +286,9 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     setDefaultTimerMinutesState(ls<number>(KEYS.defaultTimerMinutes, 25));
     setHasSeenOnboarding(ls<boolean>(KEYS.hasSeenOnboarding, false));
     setIsPremium(ls<boolean>(KEYS.isPremium, false));
+    const savedTheme = ls<ThemeName>(KEYS.theme, 'warm-start');
+    setThemeState(savedTheme);
+    applyTheme(savedTheme);
 
     setLoaded(true);
 
@@ -317,6 +333,12 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   useEffect(() => { if (loaded) lsSet(KEYS.defaultTimerMinutes, defaultTimerMinutes); }, [defaultTimerMinutes, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.hasSeenOnboarding, hasSeenOnboarding); }, [hasSeenOnboarding, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.isPremium, isPremium); }, [isPremium, loaded]);
+
+  const setTheme = useCallback((t: ThemeName) => {
+    setThemeState(t);
+    lsSet(KEYS.theme, t);
+    applyTheme(t);
+  }, []);
   // Sync settings to Supabase for all signed-in users
   useEffect(() => {
     if (!loaded || !userId) return;
@@ -662,6 +684,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     restStreak, bestRestStreak,
     hasSeenOnboarding, markOnboardingSeen,
     isPremium, activatePremium,
+    theme, setTheme,
   };
 
   return (

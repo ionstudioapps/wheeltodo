@@ -28,6 +28,7 @@ body {
   --danger:          #E59880;
   --wheel-1: #EDB590; --wheel-2: #E59880; --wheel-3: #9DC4BC;
   --wheel-4: #F0D29D; --wheel-5: #ADA8CC; --wheel-6: #D4A5C8;
+  --wheel-7: #BCD4A5; --wheel-8: #EDBDAC;
 }
 
 /* ── Theme: Slow Down (dark, grounding) ────────────────────────── */
@@ -47,6 +48,7 @@ body {
   --danger:          #C07868;
   --wheel-1: #C8977A; --wheel-2: #C07868; --wheel-3: #7AADA6;
   --wheel-4: #C4A87A; --wheel-5: #8E8AAA; --wheel-6: #A882A4;
+  --wheel-7: #98B888; --wheel-8: #C8A098;
 }
 
 /* ── Theme: Light Accessible (high contrast) ───────────────────── */
@@ -66,6 +68,7 @@ body {
   --danger:          #B84A30;
   --wheel-1: #C8640A; --wheel-2: #B84A30; --wheel-3: #2A8C82;
   --wheel-4: #8A7200; --wheel-5: #5A5498; --wheel-6: #8A4070;
+  --wheel-7: #3A7230; --wheel-8: #943060;
 }
 
 /* ── Theme: Dark Accessible (high contrast) ────────────────────── */
@@ -85,6 +88,7 @@ body {
   --danger:          #F0A898;
   --wheel-1: #F5C4A0; --wheel-2: #F0A898; --wheel-3: #B4E0D8;
   --wheel-4: #F5DFA0; --wheel-5: #C8C4E8; --wheel-6: #E8BCD8;
+  --wheel-7: #A8D898; --wheel-8: #F0C8D0;
 }
 
 body {

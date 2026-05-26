@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { RotateCcw, ListTodo, Moon, BarChart2, LogOut, User, X, Flame, Minus, Plus, Trophy, Clock, Zap } from "lucide-react";
-import { getSupabaseClient } from "@todo/shared";
+import { RotateCcw, ListTodo, Moon, BarChart2, LogOut, User, X, Flame, Minus, Plus, Trophy, Clock, Zap, Check } from "lucide-react";
+import { getSupabaseClient, THEMES, type ThemeName } from "@todo/shared";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { useApp, type RestGoalTier, REST_GOAL_MINUTES } from "@/context/AppContext";
 import { ACHIEVEMENT_DEFS, getUnlockedTierIds } from "@/utils/achievements";
@@ -236,6 +236,7 @@ function ProfileModal({ user, onClose, onSignOut }: ProfileModalProps) {
     categories, addCategory, removeCategory,
     completedTasks,
     achievementValues,
+    theme, setTheme,
   } = useApp();
 
   const unlockedIds = getUnlockedTierIds(achievementValues);
@@ -508,6 +509,50 @@ function ProfileModal({ user, onClose, onSignOut }: ProfileModalProps) {
                       <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{description}</span>
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div className="h-px" style={{ background: 'var(--bg-track)' }} />
+
+              {/* Theme */}
+              <div>
+                <p className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Theme</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(Object.values(THEMES) as typeof THEMES[ThemeName][]).map((t) => {
+                    const isActive = theme === t.name;
+                    const wheelColors = t.colors.wheel as readonly string[];
+                    const conicStops = wheelColors.map((c, i) =>
+                      `${c} ${(i / wheelColors.length) * 100}% ${((i + 1) / wheelColors.length) * 100}%`
+                    ).join(', ');
+                    return (
+                      <button
+                        key={t.name}
+                        onClick={() => setTheme(t.name)}
+                        className="rounded-2xl p-3 flex flex-col gap-2.5 border-2 transition-all text-left relative"
+                        style={{
+                          background: t.colors.bgScreen,
+                          borderColor: isActive ? t.colors.accent : t.colors.bgInput,
+                        }}
+                      >
+                        <div
+                          className="w-10 h-10 rounded-full shrink-0"
+                          style={{ background: `conic-gradient(${conicStops})` }}
+                        />
+                        <div>
+                          <span className="text-xs font-bold block leading-tight" style={{ color: t.colors.textPrimary }}>{t.label}</span>
+                          <span className="text-[10px] leading-tight" style={{ color: t.colors.textSecondary }}>{t.dark ? 'Dark' : 'Light'}</span>
+                        </div>
+                        {isActive && (
+                          <div
+                            className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
+                            style={{ background: t.colors.accent }}
+                          >
+                            <Check size={9} strokeWidth={3} color={t.dark ? '#000000' : '#ffffff'} />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

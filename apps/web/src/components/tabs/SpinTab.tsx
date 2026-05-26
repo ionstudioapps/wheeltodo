@@ -31,6 +31,7 @@ const ACHIEVEMENT_ICONS: Record<string, IconComp> = {
 const WHEEL_COLORS = [
   "var(--wheel-2)", "var(--wheel-1)", "var(--wheel-3)",
   "var(--wheel-4)", "var(--wheel-5)", "var(--wheel-6)",
+  "var(--wheel-7)", "var(--wheel-8)",
 ];
 
 // ─── FAQ Accordion ────────────────────────────────────────────────────────────

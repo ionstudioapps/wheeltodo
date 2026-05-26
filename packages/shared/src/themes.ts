@@ -15,11 +15,11 @@ export const PALETTE = {
   ink:     '#2A2520',
 } as const;
 
-// Wheel slice colours per theme — 6 slots mapped to palette colours
-const WHEEL_WARM    = ['#EDB590','#E59880','#9DC4BC','#F0D29D','#ADA8CC','#D4A5C8'] as const;
-const WHEEL_SLOW    = ['#C8977A','#C07868','#7AADA6','#C4A87A','#8E8AAA','#A882A4'] as const; // muted for dark bg
-const WHEEL_LIGHT_A = ['#C8640A','#B84A30','#2A8C82','#B89000','#5A5498','#A03882'] as const; // high contrast on white
-const WHEEL_DARK_A  = ['#F5C4A0','#F0A898','#B4E0D8','#F5DFA0','#C8C4E8','#E8BCD8'] as const; // high contrast on dark
+// Wheel slice colours per theme — 8 slots mapped to palette colours
+const WHEEL_WARM    = ['#EDB590','#E59880','#9DC4BC','#F0D29D','#ADA8CC','#D4A5C8','#BCD4A5','#EDBDAC'] as const;
+const WHEEL_SLOW    = ['#C8977A','#C07868','#7AADA6','#C4A87A','#8E8AAA','#A882A4','#98B888','#C8A098'] as const; // muted for dark bg
+const WHEEL_LIGHT_A = ['#C8640A','#B84A30','#2A8C82','#B89000','#5A5498','#A03882','#3A7230','#943060'] as const; // high contrast on white
+const WHEEL_DARK_A  = ['#F5C4A0','#F0A898','#B4E0D8','#F5DFA0','#C8C4E8','#E8BCD8','#A8D898','#F0C8D0'] as const; // high contrast on dark
 
 export type ThemeName = 'warm-start' | 'slow-down' | 'light-a11y' | 'dark-a11y';
 
@@ -74,7 +74,7 @@ export const THEMES: Record<ThemeName, Theme> = {
         custom:      '#EDBDAC',
       },
       wheel:      WHEEL_WARM,
-      wheelLight: ['#F9E8DC','#F7DDD8','#DCF0EE','#FAF0DC','#EEEDF5','#F5E8F2'],
+      wheelLight: ['#F9E8DC','#F7DDD8','#DCF0EE','#FAF0DC','#EEEDF5','#F5E8F2','#E8F5E0','#FAE8E4'],
     },
   },
 
@@ -101,7 +101,7 @@ export const THEMES: Record<ThemeName, Theme> = {
         custom:      '#A882A4',
       },
       wheel:      WHEEL_SLOW,
-      wheelLight: ['#3A2E28','#382420','#1E3432','#3A3220','#2C2A38','#302430'],
+      wheelLight: ['#3A2E28','#382420','#1E3432','#3A3220','#2C2A38','#302430','#1E3028','#382428'],
     },
   },
 
@@ -128,7 +128,7 @@ export const THEMES: Record<ThemeName, Theme> = {
         custom:      '#8A4070',  // darker lilac
       },
       wheel:      WHEEL_LIGHT_A,
-      wheelLight: ['#F9EEE8','#F7E4E0','#E0F2F0','#F5EDD0','#ECEAF7','#F5E4F0'],
+      wheelLight: ['#F9EEE8','#F7E4E0','#E0F2F0','#F5EDD0','#ECEAF7','#F5E4F0','#E4F5E0','#F5E0EC'],
     },
   },
 
@@ -155,7 +155,7 @@ export const THEMES: Record<ThemeName, Theme> = {
         custom:      '#E8BCD8',
       },
       wheel:      WHEEL_DARK_A,
-      wheelLight: ['#3A2820','#382020','#183430','#382E10','#282438','#301820'],
+      wheelLight: ['#3A2820','#382020','#183430','#382E10','#282438','#301820','#182C18','#381820'],
     },
   },
 };
