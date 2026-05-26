@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { HelpCircle, ChevronDown, ChevronUp, Timer, Plus, Trash2, Sparkles, Lock, Mic } from "lucide-react";
+import { HelpCircle, ChevronDown, ChevronUp, Timer, Plus, Trash2, Sparkles, Lock, Mic, Send, RotateCcw } from "lucide-react";
 import { useApp, COLORS, type Task } from "@/context/AppContext";
 import { Confetti } from "@/components/Confetti";
 import { GentlePush } from "@/components/GentlePush";
@@ -80,7 +80,12 @@ interface SubtaskSuggestion {
   minutes: number;
 }
 
-type BreakdownPhase = "questions" | "loading" | "results" | "error";
+interface ConvTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+type BreakdownPhase = "input" | "loading" | "question" | "results" | "error";
 
 function BreakdownModal({
   task,
@@ -91,16 +96,61 @@ function BreakdownModal({
   onClose: () => void;
   onAdd: (subtasks: SubtaskSuggestion[]) => void;
 }) {
-  const [phase, setPhase] = useState<BreakdownPhase>("questions");
-  const [goal, setGoal] = useState("");
-  const [constraints, setConstraints] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const recognitionRef = useRef<{ stop: () => void; abort: () => void } | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const [phase, setPhase] = useState<BreakdownPhase>("input");
+  const [inputText, setInputText] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [history, setHistory] = useState<ConvTurn[]>([]);
+  const [question, setQuestion] = useState("");
   const [suggestions, setSuggestions] = useState<SubtaskSuggestion[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [error, setError] = useState<string | null>(null);
 
-  async function fetchBreakdown() {
+  const hasSpeech = typeof window !== "undefined" &&
+    !!(
+      (window as unknown as Record<string, unknown>).SpeechRecognition ??
+      (window as unknown as Record<string, unknown>).webkitSpeechRecognition
+    );
+
+  function startRecording() {
+    const SR = (window as unknown as Record<string, unknown>).SpeechRecognition
+      ?? (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
+    if (!SR) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recognition = new (SR as any)();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = (e: { results: SpeechRecognitionResultList }) => {
+      const full = Array.from(e.results).map((r) => r[0].transcript).join(" ");
+      setInputText(full);
+    };
+    recognition.onerror = () => { setIsRecording(false); };
+    recognition.onend = () => { setIsRecording(false); };
+    recognition.start();
+    recognitionRef.current = recognition;
+    setIsRecording(true);
+  }
+
+  function stopRecording() {
+    recognitionRef.current?.stop();
+    setIsRecording(false);
+  }
+
+  async function send(userText: string, existingHistory: ConvTurn[] = []) {
+    const text = userText.trim();
+    if (!text) return;
     setPhase("loading");
     setError(null);
+
+    const firstMessage = `Task: "${task.name}" (estimated ${task.minutes} minutes)\n\n${text}`;
+    const nextHistory: ConvTurn[] =
+      existingHistory.length === 0
+        ? [{ role: "user", content: firstMessage }]
+        : [...existingHistory, { role: "user", content: text }];
+
     try {
       const res = await fetch(fnUrl("break-task"), {
         method: "POST",
@@ -108,19 +158,34 @@ function BreakdownModal({
         body: JSON.stringify({
           taskName: task.name,
           taskMinutes: task.minutes,
-          goal: goal.trim(),
-          constraints: constraints.trim(),
+          history: nextHistory,
         }),
       });
       if (!res.ok) throw new Error("Request failed");
-      const data = (await res.json()) as { subtasks?: SubtaskSuggestion[]; error?: string };
-      if (data.error) throw new Error(data.error);
-      const items = data.subtasks ?? [];
-      setSuggestions(items);
-      setSelected(new Set(items.map((_, i) => i)));
-      setPhase("results");
+      const data = (await res.json()) as
+        | { type: "question"; question: string }
+        | { type: "subtasks"; subtasks: SubtaskSuggestion[] }
+        | { error: string };
+
+      if ("error" in data) throw new Error(data.error);
+
+      if (data.type === "question") {
+        const updatedHistory: ConvTurn[] = [
+          ...nextHistory,
+          { role: "assistant", content: data.question },
+        ];
+        setHistory(updatedHistory);
+        setQuestion(data.question);
+        setInputText("");
+        setPhase("question");
+      } else {
+        setHistory(nextHistory);
+        setSuggestions(data.subtasks);
+        setSelected(new Set(data.subtasks.map((_, i) => i)));
+        setPhase("results");
+      }
     } catch {
-      setError("Could not generate subtasks. Check your ANTHROPIC_API_KEY and try again.");
+      setError("Something went wrong. Try again.");
       setPhase("error");
     }
   }
@@ -145,50 +210,64 @@ function BreakdownModal({
         <div className="w-9 h-1 rounded-full mb-5 mx-auto md:hidden" style={{ background: 'var(--border)' }} />
         <div className="flex items-center gap-2 mb-1">
           <Sparkles size={16} strokeWidth={1.8} style={{ color: 'var(--accent)' }} />
-          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Break down task</h2>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Plan it out</h2>
         </div>
         <p className="text-sm mb-5 truncate" style={{ color: 'var(--text-muted)' }}>"{task.name}"</p>
 
-        {phase === "questions" && (
-          <form onSubmit={(e) => { e.preventDefault(); void fetchBreakdown(); }} className="flex flex-col gap-4">
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wide block mb-2" style={{ color: 'var(--text-muted)' }}>
-                What does "done" look like? *
-              </label>
+        {/* Input phase — initial context */}
+        {(phase === "input") && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              Describe what you need to do and I'll break it into steps. Voice or text.
+            </p>
+            <div className="relative">
               <textarea
+                ref={inputRef}
                 autoFocus
-                required
-                rows={2}
-                placeholder="e.g. A published blog post with intro, 3 sections, and a conclusion"
-                value={goal}
-                onChange={(e) => setGoal(e.target.value)}
-                className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none transition"
+                rows={3}
+                placeholder="e.g. Write the first draft of the project proposal — needs intro, problem statement, and timeline…"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && inputText.trim()) {
+                    e.preventDefault();
+                    void send(inputText);
+                  }
+                }}
+                className="w-full rounded-xl px-4 py-3 pr-12 text-sm focus:outline-none resize-none transition"
                 style={{ background: 'var(--bg-input)', color: 'var(--text-primary)' }}
               />
+              {hasSpeech && (
+                <button
+                  type="button"
+                  onMouseDown={startRecording}
+                  onMouseUp={stopRecording}
+                  onTouchStart={startRecording}
+                  onTouchEnd={stopRecording}
+                  className="absolute bottom-3 right-3 w-7 h-7 rounded-full flex items-center justify-center transition-colors"
+                  style={{ background: isRecording ? 'var(--accent)' : 'var(--bg-track)' }}
+                  title="Hold to speak"
+                >
+                  <Mic size={13} strokeWidth={2} style={{ color: isRecording ? '#fff' : 'var(--text-muted)' }} />
+                </button>
+              )}
             </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wide block mb-2" style={{ color: 'var(--text-muted)' }}>
-                Any tools, context, or constraints? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span>
-              </label>
-              <textarea
-                rows={2}
-                placeholder="e.g. Using Figma, needs to match the existing design system, no external assets"
-                value={constraints}
-                onChange={(e) => setConstraints(e.target.value)}
-                className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none resize-none transition"
-                style={{ background: 'var(--bg-input)', color: 'var(--text-primary)' }}
-              />
-            </div>
+            {isRecording && (
+              <p className="text-xs text-center animate-pulse" style={{ color: 'var(--accent)' }}>Listening…</p>
+            )}
             <button
-              type="submit"
-              className="w-full text-white font-semibold text-base rounded-full py-3.5 active:scale-[0.98] transition mt-1"
+              onClick={() => void send(inputText)}
+              disabled={!inputText.trim()}
+              className="w-full text-white font-semibold text-base rounded-full py-3.5 active:scale-[0.98] transition disabled:opacity-40 flex items-center justify-center gap-2"
               style={{ background: 'var(--text-primary)' }}
             >
-              Generate subtasks
+              <Send size={15} strokeWidth={2} />
+              Plan it
             </button>
-          </form>
+          </div>
         )}
 
+        {/* Loading */}
         {phase === "loading" && (
           <div className="flex flex-col items-center gap-3 py-8">
             <span className="text-3xl animate-spin inline-block" style={{ color: 'var(--accent)' }}>◎</span>
@@ -196,22 +275,77 @@ function BreakdownModal({
           </div>
         )}
 
-        {phase === "error" && (
-          <div className="flex flex-col items-center gap-3 py-6">
-            <p className="text-sm text-center" style={{ color: 'var(--text-muted)' }}>{error}</p>
+        {/* Claude needs more context — asks one question */}
+        {phase === "question" && (
+          <div className="flex flex-col gap-3">
+            <div className="rounded-2xl px-4 py-3.5" style={{ background: 'var(--bg-input)' }}>
+              <p className="text-xs font-semibold mb-1" style={{ color: 'var(--accent)' }}>One quick question</p>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>{question}</p>
+            </div>
+            <div className="relative">
+              <textarea
+                autoFocus
+                rows={2}
+                placeholder="Your answer…"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && inputText.trim()) {
+                    e.preventDefault();
+                    void send(inputText, history);
+                  }
+                }}
+                className="w-full rounded-xl px-4 py-3 pr-12 text-sm focus:outline-none resize-none transition"
+                style={{ background: 'var(--bg-input)', color: 'var(--text-primary)' }}
+              />
+              {hasSpeech && (
+                <button
+                  type="button"
+                  onMouseDown={startRecording}
+                  onMouseUp={stopRecording}
+                  onTouchStart={startRecording}
+                  onTouchEnd={stopRecording}
+                  className="absolute bottom-3 right-3 w-7 h-7 rounded-full flex items-center justify-center transition-colors"
+                  style={{ background: isRecording ? 'var(--accent)' : 'var(--bg-track)' }}
+                  title="Hold to speak"
+                >
+                  <Mic size={13} strokeWidth={2} style={{ color: isRecording ? '#fff' : 'var(--text-muted)' }} />
+                </button>
+              )}
+            </div>
+            {isRecording && (
+              <p className="text-xs text-center animate-pulse" style={{ color: 'var(--accent)' }}>Listening…</p>
+            )}
             <button
-              onClick={() => void fetchBreakdown()}
-              className="px-4 py-2 rounded-full text-sm font-semibold"
-              style={{ background: 'var(--bg-track)', color: 'var(--text-primary)' }}
+              onClick={() => void send(inputText, history)}
+              disabled={!inputText.trim()}
+              className="w-full text-white font-semibold text-base rounded-full py-3.5 active:scale-[0.98] transition disabled:opacity-40 flex items-center justify-center gap-2"
+              style={{ background: 'var(--text-primary)' }}
             >
-              Retry
+              <Send size={15} strokeWidth={2} />
+              Send
             </button>
           </div>
         )}
 
+        {/* Error */}
+        {phase === "error" && (
+          <div className="flex flex-col items-center gap-3 py-6">
+            <p className="text-sm text-center" style={{ color: 'var(--text-muted)' }}>{error}</p>
+            <button
+              onClick={() => setPhase("input")}
+              className="px-4 py-2 rounded-full text-sm font-semibold"
+              style={{ background: 'var(--bg-track)', color: 'var(--text-primary)' }}
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {/* Results */}
         {phase === "results" && suggestions.length > 0 && (
           <>
-            <div className="space-y-2 mb-5">
+            <div className="space-y-2 mb-4">
               {suggestions.map((s, i) => (
                 <button
                   key={i}
@@ -236,16 +370,17 @@ function BreakdownModal({
             </div>
             <div className="flex gap-2.5">
               <button
-                onClick={() => setPhase("questions")}
-                className="px-4 py-3.5 rounded-full text-sm font-semibold transition"
+                onClick={() => { setPhase("input"); setInputText(""); setHistory([]); }}
+                className="w-10 h-12 rounded-full flex items-center justify-center shrink-0 transition"
                 style={{ background: 'var(--bg-track)', color: 'var(--text-primary)' }}
+                title="Start over"
               >
-                Back
+                <RotateCcw size={15} strokeWidth={2} />
               </button>
               <button
                 onClick={() => { onAdd(suggestions.filter((_, i) => selected.has(i))); onClose(); }}
                 disabled={selectedCount === 0}
-                className="flex-1 text-white font-semibold text-base rounded-full py-3.5 active:scale-[0.98] transition disabled:opacity-40"
+                className="flex-1 text-white font-semibold text-base rounded-full py-3 active:scale-[0.98] transition disabled:opacity-40"
                 style={{ background: 'var(--text-primary)' }}
               >
                 Add {selectedCount} task{selectedCount !== 1 ? "s" : ""}
