@@ -20,3 +20,5 @@ yarn-error.log*
 pnpm-debug.log*
 
 .claude/worktrees/
+.vercel
+.env*.local

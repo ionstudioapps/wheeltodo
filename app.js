@@ -1,1394 +1,1014 @@
+'use strict';
 (function () {
-  "use strict";
 
-  const LEGACY_STORAGE_KEY = "wheelTodoApp.v1";
-  const DB_NAME = "wheelTodoDB";
-  const DB_VERSION = 1;
-  const DB_STORE_DAYS = "days";
-  const DEFAULT_MINUTES = 25;
-  const MIN_MINUTES = 1;
-  const MAX_MINUTES = 480;
-  const WHEEL_COLORS = [
-    "#5b8def",
-    "#6ee7b7",
-    "#c4b5fd",
-    "#fbbf24",
-    "#f472b6",
-    "#67e8f9",
-    "#a3e635",
-    "#fb923c",
-    "#94a3b8",
-    "#f87171",
-  ];
+  // ── Constants ──────────────────────────────────────────────
+  const DB_NAME    = 'wheelTodoDB';
+  const DB_VER     = 1;
+  const STORE      = 'days';
+  const MILESTONE  = 5;   // tasks per milestone arc segment
+  const SPIN_DUR   = 2900; // ms
 
-  const taskForm = document.getElementById("task-form");
-  const taskInput = document.getElementById("task-input");
-  const durationInput = document.getElementById("duration-input");
-  const taskList = document.getElementById("task-list");
-  const emptyHint = document.getElementById("empty-hint");
-  const doneList = document.getElementById("done-list");
-  const doneEmpty = document.getElementById("done-empty");
-  const productivityMinutes = document.getElementById("productivity-minutes");
-  const productivityPercent = document.getElementById("productivity-percent");
-  const productivityTimeBar = document.getElementById("productivity-bar-time");
-  const productivityTimeBarFill = document.getElementById("productivity-bar-time-fill");
-  const productivityTasksBar = document.getElementById("productivity-bar-tasks");
-  const productivityTasksBarFill = document.getElementById("productivity-bar-tasks-fill");
-  const productivityTaskMeta = document.getElementById("productivity-task-meta");
-  const productivityTimeOnbar = document.getElementById("productivity-time-onbar");
-  const productivityTimeSpentEl = document.getElementById("productivity-time-spent");
-  const productivityTimeLeftEl = document.getElementById("productivity-time-left");
-  const productivityModeTimeBtn = document.getElementById("productivity-mode-time");
-  const productivityModeTasksBtn = document.getElementById("productivity-mode-tasks");
-  const themeToggleBtn = document.getElementById("theme-toggle");
-  const wheelOpenBtn = document.getElementById("wheel-open-btn");
-  const wheelModal = document.getElementById("wheel-modal");
-  const wheelCloseBtn = document.getElementById("wheel-close-btn");
-  const clearTasksBtn = document.getElementById("clear-tasks");
-  const spinBtn = document.getElementById("spin-btn");
-  const canvas = document.getElementById("wheel");
-  const ctx = canvas.getContext("2d");
-  const miniCanvas = document.getElementById("mini-wheel");
-  const miniCtx = miniCanvas ? miniCanvas.getContext("2d") : null;
-  const MINI_SIZE = 92;
-
-  let db = null;
-  let dbReady = null;
-  let todayKey = null;
-  let saveQueue = Promise.resolve();
-
-  const pomoIdle = document.getElementById("pomo-idle");
-  const pomoActive = document.getElementById("pomo-active");
-  const pomoTaskName = document.getElementById("pomo-task-name");
-  const pomoPlanned = document.getElementById("pomo-planned");
-  const pomoTime = document.getElementById("pomo-time");
-  const pomoToggle = document.getElementById("pomo-toggle");
-  const pomoDoneBtn = document.getElementById("pomo-done-btn");
-  const pomoReset = document.getElementById("pomo-reset");
-  const pomoDone = document.getElementById("pomo-done");
-
-  const resultModal = document.getElementById("result-modal");
-  const resultTask = document.getElementById("result-task");
-  const resultDuration = document.getElementById("result-duration");
-  const modalStart = document.getElementById("modal-start");
-
-  let tasks = [];
-  let doneTasks = [];
-  let wheelRotation = 0;
-  let spinning = false;
-  let selectedIndex = null;
-  let editingTaskId = null;
-  let editingDoneTaskId = null;
-
-  let pomoDurationMs = DEFAULT_MINUTES * 60 * 1000;
-  let pomoRemainingMs = pomoDurationMs;
-  let pomoRunning = false;
-  let pomoIntervalId = null;
-  let pomoTask = "";
-  let pomoTaskId = null;
-  let pomoSessionFinished = false;
-  let fireworksGen = 0;
-
-  const THEME_STORAGE_KEY = "wheelTodoApp.theme";
-  function preferredTheme() {
-    const saved = localStorage.getItem(THEME_STORAGE_KEY);
-    if (saved === "dark" || saved === "light") return saved;
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  }
-
-  function setTheme(theme) {
-    const isDark = theme === "dark";
-    document.documentElement.classList.toggle("theme-dark", isDark);
-    if (themeToggleBtn) themeToggleBtn.textContent = isDark ? "Light" : "Dark";
-  }
-
-  if (themeToggleBtn) {
-    themeToggleBtn.addEventListener("click", () => {
-      const current = document.documentElement.classList.contains("theme-dark") ? "dark" : "light";
-      const next = current === "dark" ? "light" : "dark";
-      try {
-        localStorage.setItem(THEME_STORAGE_KEY, next);
-      } catch {
-        /* ignore */
-      }
-      setTheme(next);
-      resizeCanvas();
-      resizeMiniWheel();
-    });
-  }
-
-  if (wheelOpenBtn) {
-    wheelOpenBtn.addEventListener("click", () => {
-      if (!wheelModal) return;
-      wheelModal.hidden = false;
-      resizeCanvas();
-      updateSpinState();
-      // Put focus on the primary action for keyboard users.
-      if (spinBtn && !spinBtn.disabled) spinBtn.focus();
-    });
-  }
-
-  if (wheelCloseBtn && wheelModal) {
-    wheelCloseBtn.addEventListener("click", () => {
-      wheelModal.hidden = true;
-      wheelOpenBtn && wheelOpenBtn.focus && wheelOpenBtn.focus();
-    });
-  }
-
-  function clampMinutes(m) {
-    if (!Number.isFinite(m)) return DEFAULT_MINUTES;
-    const r = Math.round(m);
-    return Math.max(MIN_MINUTES, Math.min(MAX_MINUTES, r));
-  }
-
-  function newId() {
-    return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
-  }
-
-  function normalizeTask(raw) {
-    if (typeof raw === "string") {
-      const t = raw.trim();
-      if (!t) return null;
-      return { id: newId(), text: t, minutes: DEFAULT_MINUTES };
-    }
-    if (raw && typeof raw === "object" && typeof raw.text === "string") {
-      const t = raw.text.trim();
-      if (!t) return null;
-      const completedAt =
-        typeof raw.completedAt === "number" && Number.isFinite(raw.completedAt) ? raw.completedAt : undefined;
-      const elapsedMs =
-        typeof raw.elapsedMs === "number" && Number.isFinite(raw.elapsedMs) ? raw.elapsedMs : undefined;
-      const remainingMs =
-        typeof raw.remainingMs === "number" && Number.isFinite(raw.remainingMs) ? raw.remainingMs : undefined;
-      const runningAtCompletion =
-        typeof raw.runningAtCompletion === "boolean" ? raw.runningAtCompletion : undefined;
-      return {
-        id: typeof raw.id === "string" ? raw.id : newId(),
-        text: t,
-        minutes: clampMinutes(Number(raw.minutes)),
-        completedAt,
-        elapsedMs,
-        remainingMs,
-        runningAtCompletion,
-      };
-    }
-    return null;
-  }
-
-  function taskText(task) {
-    return typeof task === "string" ? task : task.text;
-  }
-
-  function taskMinutes(task) {
-    if (typeof task === "string") return DEFAULT_MINUTES;
-    return clampMinutes(Number(task.minutes));
-  }
-
-  function minutesToMs(minutes) {
-    return clampMinutes(minutes) * 60 * 1000;
-  }
-
-  function cssVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  }
-
-  function resizeMiniWheel() {
-    if (!miniCanvas || !miniCtx) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    miniCanvas.width = MINI_SIZE * dpr;
-    miniCanvas.height = MINI_SIZE * dpr;
-    miniCanvas.style.width = `${MINI_SIZE}px`;
-    miniCanvas.style.height = `${MINI_SIZE}px`;
-    miniCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawMiniWheel();
-  }
-
-  function localDayKey(d = new Date()) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
-
-  function elapsedMsForDoneTask(task) {
-    if (!task) return 0;
-
-    if (typeof task.elapsedMs === "number" && Number.isFinite(task.elapsedMs)) {
-      return Math.max(0, task.elapsedMs);
-    }
-
-    const totalMs = minutesToMs(taskMinutes(task));
-    if (typeof task.remainingMs === "number" && Number.isFinite(task.remainingMs)) {
-      return Math.max(0, totalMs - task.remainingMs);
-    }
-
-    return totalMs;
-  }
-
-  function isDoneTaskForToday(task) {
-    if (!task || typeof task.completedAt !== "number" || !Number.isFinite(task.completedAt)) return true;
-    const d = new Date(task.completedAt);
-    return localDayKey(d) === localDayKey();
-  }
-
-  let productivityMode = "time";
-  let lastProd = {
-    timePercentInt: 0,
-    taskPercentInt: 0,
-    totalTimeMinRounded: 0,
-    doneCountToday: 0,
-    totalTasksCountToday: 0,
+  const WHEEL_COLORS = {
+    'warm-start':  ['#EDB590','#E59880','#9DC4BC','#F0D29D','#ADA8CC','#D4A5C8'],
+    'slow-down':   ['#C8977A','#C07868','#7AADA6','#C4A87A','#8E8AAA','#A882A4'],
+    'light-a11y':  ['#C8640A','#B84A30','#2A8C82','#B89000','#5A5498','#A03882'],
+    'dark-a11y':   ['#F5C4A0','#F0A898','#B4E0D8','#F5DFA0','#C8C4E8','#E8BCD8'],
   };
 
-  function applyProductivityModeUI() {
-    if (!productivityTimeBar || !productivityTasksBar) return;
-    const showTime = productivityMode === "time";
+  const THEMES = {
+    'warm-start': { label: 'Warm Start', mode: 'Light',                  bg: '#FAF7F2', swatch: '#E59880' },
+    'slow-down':  { label: 'Slow Down',  mode: 'Dark',                   bg: '#1C1828', swatch: '#ADA8CC' },
+    'light-a11y': { label: 'Light a11y', mode: 'High contrast · Light',  bg: '#FFFFFF', swatch: '#B84A30' },
+    'dark-a11y':  { label: 'Dark a11y',  mode: 'High contrast · Dark',   bg: '#0F0D18', swatch: '#F5C4A0' },
+  };
 
-    productivityTimeBar.hidden = !showTime;
-    productivityTasksBar.hidden = showTime;
+  // ── State ──────────────────────────────────────────────────
+  let db            = null;
+  let tasks         = [];      // today's pending tasks
+  let doneTasks     = [];      // today's completed tasks
+  let habits        = [];      // [{id,name,cat,minutes,initial}]
+  let habitLog      = {};      // {dateKey:{habitId:true}}
+  let currentTheme  = localStorage.getItem('wt_theme') || 'warm-start';
+  let habitsEnabled = localStorage.getItem('wt_habits_enabled') !== 'false';
+  let currentTab    = 'tasks';
+  let wheelRotation = 0;
+  let spinFrame     = null;
+  let pickedTask    = null;
+  let editingTaskId = null;
+  let editingHabitId = null;
+  let focusTask     = null;
+  let focusTotalSecs = 0;
+  let focusRemSecs  = 0;
+  let focusInterval = null;
+  let focusPaused   = false;
+  let undoTimeout   = null;
+  let deletedTask   = null;
+  let deletedTaskIndex = 0;
+  let _heatmapCache = {};
+  let wateringTimeout = null;
+  let dragSrc       = null;
 
-    if (productivityMinutes) productivityMinutes.hidden = !showTime;
-    if (productivityTaskMeta) productivityTaskMeta.hidden = showTime;
-    if (productivityTimeOnbar) productivityTimeOnbar.hidden = !showTime;
-
-    if (productivityPercent) {
-      const v = showTime ? lastProd.timePercentInt : lastProd.taskPercentInt;
-      productivityPercent.textContent = `${v}%`;
-    }
+  // ── Helpers ────────────────────────────────────────────────
+  function localDayKey(date) {
+    const d = date || new Date();
+    return d.getFullYear()
+      + '-' + String(d.getMonth() + 1).padStart(2, '0')
+      + '-' + String(d.getDate()).padStart(2, '0');
   }
 
-  function updateProductivityUI() {
-    if (
-      !productivityMinutes ||
-      !productivityPercent ||
-      !productivityTimeBarFill ||
-      !productivityTasksBarFill ||
-      !productivityTimeBar ||
-      !productivityTasksBar
-    )
-      return;
-
-    const doneToday = doneTasks.filter(isDoneTaskForToday);
-    const doneActualMs = doneToday.reduce((sum, t) => sum + elapsedMsForDoneTask(t), 0);
-
-    const remainingEstimatedMs = tasks.reduce((sum, t) => sum + minutesToMs(taskMinutes(t)), 0);
-
-    const totalMsTime = doneActualMs + remainingEstimatedMs;
-    const percentTime = totalMsTime > 0 ? (doneActualMs / totalMsTime) * 100 : 0;
-    const clampedTime = Math.max(0, Math.min(100, percentTime));
-    const timePercentInt = Math.round(clampedTime);
-
-    const doneCountToday = doneToday.length;
-    const totalTasksCountToday = tasks.length + doneCountToday;
-    const percentTasks =
-      totalTasksCountToday > 0 ? (doneCountToday / totalTasksCountToday) * 100 : 0;
-    const clampedTasks = Math.max(0, Math.min(100, percentTasks));
-    const taskPercentInt = Math.round(clampedTasks);
-
-    productivityMinutes.textContent = `${Math.round(totalMsTime / 60000)} min`;
-    if (productivityTaskMeta) {
-      productivityTaskMeta.textContent =
-        totalTasksCountToday > 0
-          ? `${doneCountToday}/${totalTasksCountToday} tasks done`
-          : `No tasks today`;
-    }
-
-    productivityTimeBarFill.style.width = `${clampedTime}%`;
-    productivityTasksBarFill.style.width = `${clampedTasks}%`;
-
-    productivityTimeBar.setAttribute("aria-valuenow", String(timePercentInt));
-    productivityTasksBar.setAttribute("aria-valuenow", String(taskPercentInt));
-
-    if (productivityTimeSpentEl && productivityTimeLeftEl) {
-      const spentMin = Math.round(doneActualMs / 60000);
-      const leftMin = Math.max(0, Math.round(remainingEstimatedMs / 60000));
-      productivityTimeSpentEl.textContent = `${spentMin} min spent`;
-      productivityTimeLeftEl.textContent = `${leftMin} min left`;
-    }
-
-    lastProd = {
-      timePercentInt,
-      taskPercentInt,
-      totalTimeMinRounded: Math.round(totalMsTime / 60000),
-      doneCountToday,
-      totalTasksCountToday,
-    };
-
-    applyProductivityModeUI();
+  function uid() {
+    return Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
   }
 
-  if (productivityModeTimeBtn && productivityModeTasksBtn) {
-    productivityModeTimeBtn.addEventListener("click", () => {
-      productivityMode = "time";
-      productivityModeTimeBtn.classList.add("productivity-mode-btn--active");
-      productivityModeTasksBtn.classList.remove("productivity-mode-btn--active");
-      applyProductivityModeUI();
-    });
-    productivityModeTasksBtn.addEventListener("click", () => {
-      productivityMode = "tasks";
-      productivityModeTasksBtn.classList.add("productivity-mode-btn--active");
-      productivityModeTimeBtn.classList.remove("productivity-mode-btn--active");
-      applyProductivityModeUI();
-    });
+  function polar(cx, r, deg) {
+    const rad = (deg - 90) * Math.PI / 180;
+    return { x: cx + r * Math.cos(rad), y: cx + r * Math.sin(rad) };
   }
 
-  function openDb() {
-    if (dbReady) return dbReady;
-    dbReady = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const database = req.result;
-        if (!database.objectStoreNames.contains(DB_STORE_DAYS)) {
-          database.createObjectStore(DB_STORE_DAYS, { keyPath: "dateKey" });
-        }
-      };
-      req.onsuccess = () => {
-        db = req.result;
-        resolve(db);
-      };
-      req.onerror = () => reject(req.error);
-    });
-    return dbReady;
+  function slicePath(cx, R, i, n) {
+    const sd  = 360 / n;
+    const s   = polar(cx, R, i * sd);
+    const e   = polar(cx, R, (i + 1) * sd);
+    const lg  = sd > 180 ? 1 : 0;
+    return `M ${cx} ${cx} L ${s.x.toFixed(3)} ${s.y.toFixed(3)} A ${R} ${R} 0 ${lg} 1 ${e.x.toFixed(3)} ${e.y.toFixed(3)} Z`;
   }
 
-  async function loadDayData(key) {
-    const database = await openDb();
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+  function fmtMins(m) {
+    if (!m || m <= 0) return '';
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60), r = m % 60;
+    return r ? `${h}h ${r}m` : `${h}h`;
+  }
+
+  function fmtTime(secs) {
+    const m = Math.floor(secs / 60), s = secs % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  function getInitial(name) { return (name || '?').trim()[0].toUpperCase(); }
+
+  function getWheelColors() { return WHEEL_COLORS[currentTheme] || WHEEL_COLORS['warm-start']; }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  const $ = id => document.getElementById(id);
+  const $$ = sel => document.querySelectorAll(sel);
+
+  // ── IndexedDB ──────────────────────────────────────────────
+  function openDB() {
     return new Promise((resolve, reject) => {
-      const tx = database.transaction([DB_STORE_DAYS], "readonly");
-      const store = tx.objectStore(DB_STORE_DAYS);
-      const getReq = store.get(key);
-      getReq.onsuccess = () => {
-        const res = getReq.result;
-        resolve(
-          res && typeof res === "object"
-            ? res
-            : { dateKey: key, tasks: [], doneTasks: [] }
-        );
+      const req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = e => {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains(STORE)) {
+          d.createObjectStore(STORE, { keyPath: 'dateKey' });
+        }
       };
-      getReq.onerror = () => reject(getReq.error);
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = e => reject(e.target.error);
     });
   }
 
-  async function saveDayData(key) {
-    const database = await openDb();
+  function dbGet(key) {
     return new Promise((resolve, reject) => {
-      const tx = database.transaction([DB_STORE_DAYS], "readwrite");
-      const store = tx.objectStore(DB_STORE_DAYS);
-      store.put({ dateKey: key, tasks, doneTasks });
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => reject(tx.error);
+      const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = e => reject(e.target.error);
     });
   }
 
-  async function loadTasks() {
-    todayKey = localDayKey(new Date());
-    const day = await loadDayData(todayKey);
-
-    // Migration: bring legacy localStorage data into today's record once.
-    const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
-    const hasLegacy = Boolean(legacyRaw);
-
-    const dayEmpty = (!day.tasks || day.tasks.length === 0) && (!day.doneTasks || day.doneTasks.length === 0);
-    if (dayEmpty && hasLegacy) {
-      try {
-        const legacy = JSON.parse(legacyRaw);
-        const legacyTasks = Array.isArray(legacy.tasks) ? legacy.tasks : [];
-        tasks = legacyTasks.map(normalizeTask).filter(Boolean);
-        doneTasks = [];
-        await saveDayData(todayKey);
-        localStorage.removeItem(LEGACY_STORAGE_KEY);
-        return tasks;
-      } catch {
-        // If migration fails, just fall back to DB contents.
-      }
-    }
-
-    tasks = Array.isArray(day.tasks) ? day.tasks.map(normalizeTask).filter(Boolean) : [];
-    doneTasks = Array.isArray(day.doneTasks) ? day.doneTasks.map(normalizeTask).filter(Boolean) : [];
-    return tasks;
-  }
-
-  function saveTasks() {
-    if (!todayKey) return;
-    saveQueue = saveQueue
-      .then(() => saveDayData(todayKey))
-      .catch(() => {});
-  }
-
-  function resizeCanvas() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const size = 320;
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
-    canvas.style.width = `${size}px`;
-    canvas.style.height = `${size}px`;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawWheel();
-    drawMiniWheel();
-  }
-
-  function drawWheel() {
-    const w = 320;
-    const h = 320;
-    const cx = w / 2;
-    const cy = h / 2;
-    const r = Math.min(cx, cy) - 8;
-
-    ctx.clearRect(0, 0, w, h);
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(wheelRotation);
-
-    const n = tasks.length;
-    if (n === 0) {
-      ctx.beginPath();
-      ctx.arc(0, 0, r, 0, Math.PI * 2);
-      ctx.fillStyle = cssVar("--wheel-empty-bg");
-      ctx.fill();
-      ctx.restore();
-      return;
-    }
-
-    const slice = (Math.PI * 2) / n;
-    for (let i = 0; i < n; i++) {
-      const start = i * slice - Math.PI / 2;
-      const end = start + slice;
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.arc(0, 0, r, start, end);
-      ctx.closePath();
-      ctx.fillStyle = WHEEL_COLORS[i % WHEEL_COLORS.length];
-      ctx.fill();
-      ctx.strokeStyle = cssVar("--wheel-slice-stroke");
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = cssVar("--wheel-center-bg");
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.12, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const fontSize = n > 8 ? 10 : n > 5 ? 11 : 12;
-    ctx.font = `600 ${fontSize}px "DM Sans", sans-serif`;
-
-    for (let i = 0; i < n; i++) {
-      const mid = i * slice + slice / 2 - Math.PI / 2;
-      const labelR = r * 0.62;
-      const x = Math.cos(mid) * labelR;
-      const y = Math.sin(mid) * labelR;
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(mid + Math.PI / 2);
-      let text = taskText(tasks[i]);
-      const maxChars = n > 6 ? 14 : 18;
-      if (text.length > maxChars) text = text.slice(0, maxChars - 1) + "…";
-      ctx.fillStyle = cssVar("--wheel-label-fill");
-      ctx.fillText(text, 0, 0);
-      ctx.restore();
-    }
-
-    ctx.restore();
-  }
-
-  function drawMiniWheel() {
-    if (!miniCanvas || !miniCtx) return;
-    const w = MINI_SIZE;
-    const h = MINI_SIZE;
-    const cx = w / 2;
-    const cy = h / 2;
-    const r = Math.min(cx, cy) - 5;
-
-    const n = tasks.length;
-    miniCtx.clearRect(0, 0, w, h);
-    miniCtx.save();
-    miniCtx.translate(cx, cy);
-    miniCtx.rotate(0);
-
-    if (n === 0) {
-      miniCtx.beginPath();
-      miniCtx.arc(0, 0, r, 0, Math.PI * 2);
-      miniCtx.fillStyle = cssVar("--wheel-empty-bg");
-      miniCtx.fill();
-      miniCtx.restore();
-      return;
-    }
-
-    const slice = (Math.PI * 2) / n;
-    for (let i = 0; i < n; i++) {
-      const start = i * slice - Math.PI / 2;
-      const end = start + slice;
-      miniCtx.beginPath();
-      miniCtx.moveTo(0, 0);
-      miniCtx.arc(0, 0, r, start, end);
-      miniCtx.closePath();
-      miniCtx.fillStyle = WHEEL_COLORS[i % WHEEL_COLORS.length];
-      miniCtx.fill();
-      miniCtx.strokeStyle = cssVar("--wheel-slice-stroke");
-      miniCtx.lineWidth = 1;
-      miniCtx.stroke();
-    }
-
-    miniCtx.fillStyle = cssVar("--wheel-center-bg");
-    miniCtx.beginPath();
-    miniCtx.arc(0, 0, r * 0.22, 0, Math.PI * 2);
-    miniCtx.fill();
-
-    // Labels become unreadable when there are many tasks; only show when small.
-    if (n <= 8) {
-      miniCtx.textAlign = "center";
-      miniCtx.textBaseline = "middle";
-      const fontSize = n > 6 ? 7 : 8;
-      miniCtx.font = `600 ${fontSize}px "DM Sans", sans-serif`;
-      for (let i = 0; i < n; i++) {
-        const mid = i * slice + slice / 2 - Math.PI / 2;
-        const labelR = r * 0.66;
-        const x = Math.cos(mid) * labelR;
-        const y = Math.sin(mid) * labelR;
-        miniCtx.save();
-        miniCtx.translate(x, y);
-        miniCtx.rotate(mid + Math.PI / 2);
-        let text = taskText(tasks[i]);
-        const maxChars = n > 6 ? 10 : 12;
-        if (text.length > maxChars) text = text.slice(0, maxChars - 1) + "…";
-        miniCtx.fillStyle = cssVar("--wheel-label-fill");
-        miniCtx.fillText(text, 0, 0);
-        miniCtx.restore();
-      }
-    }
-
-    miniCtx.restore();
-  }
-
-  function renderTaskList() {
-    taskList.innerHTML = "";
-    tasks.forEach((task) => {
-      const text = taskText(task);
-      const mins = taskMinutes(task);
-      const li = document.createElement("li");
-      li.className = "task-item";
-      const body = document.createElement("div");
-      body.className = "task-item-body";
-
-      if (editingTaskId === task.id) {
-        const titleInput = document.createElement("input");
-        titleInput.type = "text";
-        titleInput.value = text;
-        titleInput.maxLength = 120;
-        titleInput.required = true;
-        titleInput.className = "task-inline-edit-input";
-
-        const minsInput = document.createElement("input");
-        minsInput.type = "number";
-        minsInput.value = String(mins);
-        minsInput.min = "1";
-        minsInput.max = "480";
-        minsInput.step = "1";
-        minsInput.inputMode = "numeric";
-        minsInput.required = true;
-        minsInput.className = "task-inline-edit-input";
-
-        const actions = document.createElement("div");
-        actions.className = "task-edit-actions";
-
-        const saveBtn = document.createElement("button");
-        saveBtn.type = "button";
-        saveBtn.className = "btn btn-primary task-mini-btn";
-        saveBtn.textContent = "Save";
-
-        const cancelBtn = document.createElement("button");
-        cancelBtn.type = "button";
-        cancelBtn.className = "btn btn-ghost task-mini-btn";
-        cancelBtn.textContent = "Cancel";
-
-        function commit() {
-          const newText = titleInput.value.trim();
-          if (!newText) return;
-          const newMins = clampMinutes(parseInt(minsInput.value, 10));
-          tasks = tasks.map((t) =>
-            t.id === task.id ? { ...t, text: newText, minutes: newMins } : t
-          );
-          saveTasks();
-          editingTaskId = null;
-          renderTaskList();
-          drawWheel();
-          updateSpinState();
-        }
-
-        saveBtn.addEventListener("click", commit);
-        cancelBtn.addEventListener("click", () => {
-          editingTaskId = null;
-          renderTaskList();
-          updateSpinState();
-        });
-
-        const onKeyDown = (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            editingTaskId = null;
-            renderTaskList();
-            updateSpinState();
-          }
-        };
-
-        titleInput.addEventListener("keydown", onKeyDown);
-        minsInput.addEventListener("keydown", onKeyDown);
-
-        body.append(titleInput, minsInput);
-        actions.append(saveBtn, cancelBtn);
-        li.append(body, actions);
-        taskList.appendChild(li);
-      } else {
-        const title = document.createElement("span");
-        title.className = "task-item-title task-editable";
-        title.textContent = text;
-        title.setAttribute("role", "button");
-        title.tabIndex = 0;
-
-        const meta = document.createElement("span");
-        meta.className = "task-item-mins task-editable";
-        meta.textContent = `${mins} min`;
-        meta.setAttribute("role", "button");
-        meta.tabIndex = 0;
-
-        const startEdit = () => {
-          if (spinning || pomoRunning) return;
-          if (editingTaskId === task.id) return;
-          editingTaskId = task.id;
-          renderTaskList();
-          updateSpinState();
-        };
-
-        title.addEventListener("click", startEdit);
-        meta.addEventListener("click", startEdit);
-        title.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") startEdit();
-        });
-        meta.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") startEdit();
-        });
-
-        body.append(title, meta);
-
-        const startNowBtn = document.createElement("button");
-        startNowBtn.type = "button";
-        startNowBtn.className = "task-start";
-        startNowBtn.setAttribute("aria-label", `Start ${text} now`);
-        startNowBtn.textContent = "▶";
-        startNowBtn.addEventListener("click", () => {
-          if (spinning || pomoRunning) return;
-          selectedIndex = null;
-          startPomodoroForTask(task);
-        });
-
-        const doneNowBtn = document.createElement("button");
-        doneNowBtn.type = "button";
-        doneNowBtn.className = "task-done-now";
-        doneNowBtn.setAttribute("aria-label", `Mark ${text} done now`);
-        doneNowBtn.textContent = "✓";
-        doneNowBtn.addEventListener("click", () => {
-          if (spinning || pomoRunning) return;
-          completeTaskFromToDo(task);
-        });
-
-        const rm = document.createElement("button");
-        rm.type = "button";
-        rm.className = "task-remove";
-        rm.setAttribute("aria-label", `Remove ${text}`);
-        rm.textContent = "×";
-        rm.addEventListener("click", () => {
-          tasks = tasks.filter((t) => t.id !== task.id);
-          saveTasks();
-          renderTaskList();
-          drawWheel();
-          updateSpinState();
-        drawMiniWheel();
-        });
-        li.append(body, startNowBtn, doneNowBtn, rm);
-        taskList.appendChild(li);
-      }
+  function dbPut(record) {
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(STORE, 'readwrite').objectStore(STORE).put(record);
+      req.onsuccess = () => resolve();
+      req.onerror   = e => reject(e.target.error);
     });
-
-    emptyHint.hidden = tasks.length > 0;
-    clearTasksBtn.hidden = tasks.length === 0;
-    updateProductivityUI();
-    drawMiniWheel();
   }
 
-  function renderDoneList() {
-    doneList.innerHTML = "";
-    if (doneTasks.length === 0) {
-      doneEmpty.hidden = false;
-      return;
-    }
-
-    doneEmpty.hidden = true;
-
-    function elapsedForDone(task) {
-      if (typeof task.elapsedMs === "number" && Number.isFinite(task.elapsedMs)) return Math.max(0, task.elapsedMs);
-      if (typeof task.remainingMs === "number" && Number.isFinite(task.remainingMs)) {
-        return Math.max(0, minutesToMs(taskMinutes(task)) - task.remainingMs);
-      }
-      return minutesToMs(taskMinutes(task));
-    }
-
-    doneTasks.forEach((task) => {
-      const li = document.createElement("li");
-      li.className = "task-item";
-
-      const body = document.createElement("div");
-      body.className = "task-item-body";
-
-      const title = document.createElement("span");
-      title.className = "task-item-title";
-      title.textContent = taskText(task);
-
-      if (editingDoneTaskId === task.id) {
-        const minutesToUse = Math.max(
-          1,
-          Math.round(elapsedForDone(task) / 60000)
-        );
-
-        const minsInput = document.createElement("input");
-        minsInput.type = "number";
-        minsInput.min = "1";
-        minsInput.max = "480";
-        minsInput.step = "1";
-        minsInput.inputMode = "numeric";
-        minsInput.required = true;
-        minsInput.className = "task-inline-edit-input";
-        minsInput.value = String(minutesToUse);
-
-        const actions = document.createElement("div");
-        actions.className = "task-edit-actions";
-
-        const saveBtn = document.createElement("button");
-        saveBtn.type = "button";
-        saveBtn.className = "btn btn-primary task-mini-btn";
-        saveBtn.textContent = "Save";
-
-        const cancelBtn = document.createElement("button");
-        cancelBtn.type = "button";
-        cancelBtn.className = "btn btn-ghost task-mini-btn";
-        cancelBtn.textContent = "Cancel";
-
-        function commit() {
-          const newMins = clampMinutes(parseInt(minsInput.value, 10));
-          const durationMs = minutesToMs(taskMinutes(task));
-          const newElapsedMs = minutesToMs(newMins);
-          const newRemainingMs = Math.max(0, durationMs - newElapsedMs);
-          const prevRunning = task.runningAtCompletion === true;
-          const newRunningAtCompletion = prevRunning && newRemainingMs > 0;
-
-          doneTasks = doneTasks.map((t) =>
-            t.id === task.id
-              ? {
-                  ...t,
-                  elapsedMs: newElapsedMs,
-                  remainingMs: newRemainingMs,
-                  runningAtCompletion: newRunningAtCompletion,
-                }
-              : t
-          );
-          saveTasks();
-          editingDoneTaskId = null;
-          renderDoneList();
-        }
-
-        saveBtn.addEventListener("click", commit);
-        cancelBtn.addEventListener("click", () => {
-          editingDoneTaskId = null;
-          renderDoneList();
-        });
-
-        const onKeyDown = (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            editingDoneTaskId = null;
-            renderDoneList();
-          }
-        };
-
-        minsInput.addEventListener("keydown", onKeyDown);
-
-        body.append(title, minsInput, actions);
-
-        actions.append(saveBtn, cancelBtn);
-      } else {
-        const meta = document.createElement("span");
-        meta.className = "task-item-mins task-editable";
-        meta.textContent = `Took ${formatTime(elapsedForDone(task))}`;
-        meta.setAttribute("role", "button");
-        meta.tabIndex = 0;
-
-        const startEdit = () => {
-          if (spinning || pomoRunning || editingTaskId !== null) return;
-          editingDoneTaskId = task.id;
-          renderDoneList();
-        };
-
-        meta.addEventListener("click", startEdit);
-        meta.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") startEdit();
-        });
-
-        body.append(title, meta);
-      }
-
-      const rev = document.createElement("button");
-      rev.type = "button";
-      rev.className = "task-revert";
-      rev.setAttribute("aria-label", `Revert ${taskText(task)}`);
-      rev.textContent = "↩";
-      rev.addEventListener("click", () => {
-        editingDoneTaskId = null;
-        revertDoneTask(task);
-      });
-
-      li.append(body, rev);
-      doneList.appendChild(li);
+  function dbGetAll() {
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = e => reject(e.target.error);
     });
-
-    updateProductivityUI();
   }
 
-  function updateSpinState() {
-    spinBtn.disabled = tasks.length === 0 || spinning || pomoRunning || editingTaskId !== null || editingDoneTaskId !== null;
+  async function saveTodayTasks() {
+    await dbPut({ dateKey: localDayKey(), tasks, doneTasks });
   }
 
-  function easeOutCubic(t) {
-    return 1 - Math.pow(1 - t, 3);
+  async function loadTodayTasks() {
+    const rec = await dbGet(localDayKey());
+    tasks     = rec ? (rec.tasks || [])     : [];
+    doneTasks = rec ? (rec.doneTasks || []) : [];
   }
 
-  function normalizeAngle(a) {
-    const t = a % (Math.PI * 2);
-    return t < 0 ? t + Math.PI * 2 : t;
-  }
-
-  function spinWheel() {
-    if (tasks.length === 0 || spinning) return;
-    spinning = true;
-    updateSpinState();
-
-    selectedIndex = Math.floor(Math.random() * tasks.length);
-    const slice = (Math.PI * 2) / tasks.length;
-    const endNorm = normalizeAngle(-(selectedIndex + 0.5) * slice);
-    const startNorm = normalizeAngle(wheelRotation);
-    let delta = endNorm - startNorm;
-    if (delta < 0) delta += Math.PI * 2;
-    const extraSpins = 5 + Math.floor(Math.random() * 4);
-    const totalDelta = extraSpins * Math.PI * 2 + delta;
-    const startRot = wheelRotation;
-    const targetAngle = startRot + totalDelta;
-    const animDelta = targetAngle - startRot;
-    const duration = 3200 + Math.random() * 800;
-    const start = performance.now();
-
-    function frame(now) {
-      const t = Math.min(1, (now - start) / duration);
-      const e = easeOutCubic(t);
-      wheelRotation = startRot + animDelta * e;
-      drawWheel();
-      if (t < 1) {
-        requestAnimationFrame(frame);
-      } else {
-        wheelRotation = targetAngle;
-        drawWheel();
-        spinning = false;
-        updateSpinState();
-        showResult(tasks[selectedIndex]);
-      }
-    }
-    requestAnimationFrame(frame);
-  }
-
-  function showResult(task) {
-    const text = taskText(task);
-    const mins = taskMinutes(task);
-    resultTask.textContent = text;
-    resultDuration.textContent = `${mins}-minute focus session`;
-    resultModal.hidden = false;
-    if (wheelModal) wheelModal.hidden = true;
-    modalStart.focus();
-  }
-
-  function hideResult() {
-    resultModal.hidden = true;
-  }
-
-  function stopPomoInterval() {
-    if (pomoIntervalId) {
-      clearInterval(pomoIntervalId);
-      pomoIntervalId = null;
-    }
-  }
-
-  function updateDoneButton() {
-    const show =
-      Boolean(pomoTask) && !pomoSessionFinished && pomoRemainingMs > 0;
-    pomoDoneBtn.hidden = !show;
-  }
-
-  function playFireworks() {
-    const c = document.getElementById("fireworks");
-    if (!c) return;
-    const fctx = c.getContext("2d");
-    fireworksGen += 1;
-    const myGen = fireworksGen;
-
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    c.width = Math.max(1, Math.floor(w * dpr));
-    c.height = Math.max(1, Math.floor(h * dpr));
-    c.style.width = `${w}px`;
-    c.style.height = `${h}px`;
-
-    fctx.setTransform(1, 0, 0, 1, 0, 0);
-    fctx.clearRect(0, 0, c.width, c.height);
-    fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    c.classList.add("fireworks-canvas--visible");
-
-    const colors = WHEEL_COLORS.concat(["#fde047", "#f8fafc", "#38bdf8"]);
-    const particles = [];
-    const rockets = [];
-
-    function spawnRocket() {
-      rockets.push({
-        x: w * (0.12 + Math.random() * 0.76),
-        y: h + 8,
-        vx: (Math.random() - 0.5) * 1.4,
-        vy: -(11 + Math.random() * 6),
-        targetY: h * (0.12 + Math.random() * 0.38),
-        color: colors[(Math.random() * colors.length) | 0],
-      });
-    }
-
-    function explode(x, y, color) {
-      const count = 55 + ((Math.random() * 45) | 0);
-      for (let i = 0; i < count; i++) {
-        const ang = Math.random() * Math.PI * 2;
-        const sp = 2.2 + Math.random() * 7;
-        particles.push({
-          x,
-          y,
-          vx: Math.cos(ang) * sp,
-          vy: Math.sin(ang) * sp,
-          life: 1,
-          decay: 0.01 + Math.random() * 0.022,
-          color: Math.random() < 0.45 ? color : colors[(Math.random() * colors.length) | 0],
-          g: 0.07 + Math.random() * 0.05,
-        });
-      }
-    }
-
-    let last = performance.now();
-    let spawnT = last;
-    const t0 = last;
-    const stopSpawnAt = t0 + 2400;
-
-    function frame(now) {
-      if (myGen !== fireworksGen) return;
-
-      const dt = Math.min(40, now - last);
-      last = now;
-      const k = dt / 16.67;
-
-      fctx.fillStyle = "rgba(15, 18, 25, 0.2)";
-      fctx.fillRect(0, 0, w, h);
-
-      if (now < stopSpawnAt && now - spawnT > 260) {
-        spawnRocket();
-        spawnT = now;
-      }
-
-      for (let i = rockets.length - 1; i >= 0; i--) {
-        const r = rockets[i];
-        r.x += r.vx * k;
-        r.y += r.vy * k;
-        r.vy += 0.14 * k;
-        if (r.y <= r.targetY) {
-          explode(r.x, r.y, r.color);
-          rockets.splice(i, 1);
-          continue;
-        }
-        if (r.y > h + 40) {
-          rockets.splice(i, 1);
-          continue;
-        }
-        fctx.beginPath();
-        fctx.arc(r.x, r.y, 2.5, 0, Math.PI * 2);
-        fctx.fillStyle = r.color;
-        fctx.shadowColor = r.color;
-        fctx.shadowBlur = 10;
-        fctx.fill();
-        fctx.shadowBlur = 0;
-      }
-
-      for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.x += p.vx * k;
-        p.y += p.vy * k;
-        p.vy += p.g * k;
-        p.life -= p.decay * k;
-        if (p.life <= 0) {
-          particles.splice(i, 1);
-          continue;
-        }
-        fctx.globalAlpha = Math.min(1, p.life);
-        fctx.beginPath();
-        fctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
-        fctx.fillStyle = p.color;
-        fctx.fill();
-        fctx.globalAlpha = 1;
-      }
-
-      const stillGoing =
-        now < stopSpawnAt + 2000 || rockets.length > 0 || particles.length > 0;
-      if (stillGoing) {
-        requestAnimationFrame(frame);
-      } else if (myGen === fireworksGen) {
-        c.classList.remove("fireworks-canvas--visible");
-        fctx.setTransform(1, 0, 0, 1, 0, 0);
-        fctx.clearRect(0, 0, c.width, c.height);
-      }
-    }
-
-    spawnRocket();
-    requestAnimationFrame(frame);
-  }
-
-  function completePomodoroSession({ early = false } = {}) {
-    if (!pomoTask || pomoSessionFinished) return;
-    pomoSessionFinished = true;
-
-    // Move finished task from the to-do list into the done list (and out of the wheel).
-    const remainingAtCompletion = pomoRemainingMs;
-    const elapsedAtCompletion = Math.max(0, pomoDurationMs - remainingAtCompletion);
-    const runningAtCompletion = pomoRunning && remainingAtCompletion > 0;
-    const completedAt = Date.now();
-
-    if (pomoTaskId) {
-      const idx = tasks.findIndex((t) => t.id === pomoTaskId);
-      if (idx !== -1) {
-        const finishedTask = tasks[idx];
-        const finishedWithCompletion = {
-          ...finishedTask,
-          completedAt,
-          elapsedMs: elapsedAtCompletion,
-          remainingMs: remainingAtCompletion,
-          runningAtCompletion,
-        };
-        tasks = tasks.filter((t) => t.id !== pomoTaskId);
-        doneTasks.push(finishedWithCompletion);
-        saveTasks();
-        renderTaskList();
-        renderDoneList();
-        drawWheel();
-        updateSpinState();
-        selectedIndex = null;
-      }
-    }
-
-    stopPomoInterval();
-    pomoRunning = false;
-    pomoRemainingMs = 0;
-    updatePomoDisplay();
-    pomoToggle.textContent = "Resume";
-    pomoToggle.disabled = true;
-    pomoReset.disabled = true;
-    pomoDone.textContent = early
-      ? "Task finished early. Nice work."
-      : "Session complete. Nice work.";
-    pomoDone.hidden = false;
-    pomoDoneBtn.hidden = true;
-    playFireworks();
+  // ── Habits (localStorage) ───────────────────────────────────
+  function loadHabits() {
     try {
-      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        new Notification(early ? "Task done" : "Pomodoro complete", {
-          body: `Finished: ${pomoTask}`,
-        });
-      }
-    } catch {
-      /* ignore */
+      habits    = JSON.parse(localStorage.getItem('wt_habits')     || '[]');
+      habitLog  = JSON.parse(localStorage.getItem('wt_habit_log')  || '{}');
+    } catch (_) { habits = []; habitLog = {}; }
+  }
+
+  function saveHabits()   { localStorage.setItem('wt_habits', JSON.stringify(habits)); }
+  function saveHabitLog() { localStorage.setItem('wt_habit_log', JSON.stringify(habitLog)); }
+
+  function isHabitDoneToday(id) {
+    const k = localDayKey();
+    return !!(habitLog[k] && habitLog[k][id]);
+  }
+
+  function calcHabitStreak(id) {
+    let streak = 0;
+    const today = new Date();
+    for (let i = 0; i < 365; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const k = localDayKey(d);
+      if (habitLog[k] && habitLog[k][id]) { streak++; } else { break; }
     }
+    return streak;
   }
 
-  function clearFireworks() {
-    fireworksGen += 1; // invalidate any in-flight animation
-    const c = document.getElementById("fireworks");
-    if (!c) return;
-    c.classList.remove("fireworks-canvas--visible");
-    try {
-      const fctx = c.getContext("2d");
-      fctx.setTransform(1, 0, 0, 1, 0, 0);
-      fctx.clearRect(0, 0, c.width, c.height);
-    } catch {
-      /* ignore */
+  // ── Overall streak ─────────────────────────────────────────
+  async function calcOverallStreak() {
+    const all = await dbGetAll();
+    const done = {};
+    all.forEach(r => { if (r.doneTasks && r.doneTasks.length > 0) done[r.dateKey] = true; });
+    if (doneTasks.length > 0) done[localDayKey()] = true;
+    let streak = 0;
+    const today = new Date();
+    for (let i = 0; i < 365; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      if (done[localDayKey(d)]) { streak++; } else { break; }
     }
+    return streak;
   }
 
-  function completeTaskFromToDo(task) {
-    if (!task || !task.id) return;
-    if (pomoRunning || spinning || editingTaskId !== null || editingDoneTaskId !== null) return;
-
-    const completedAt = Date.now();
-    const durationMs = minutesToMs(taskMinutes(task));
-
-    const doneTask = {
-      ...task,
-      completedAt,
-      elapsedMs: durationMs,
-      remainingMs: 0,
-      runningAtCompletion: false,
-    };
-
-    tasks = tasks.filter((t) => t.id !== task.id);
-    doneTasks.push(doneTask);
-
-    saveTasks();
-    renderTaskList();
-    renderDoneList();
-    drawWheel();
-    updateSpinState();
-    selectedIndex = null;
-
-    playFireworks();
+  // ── Heatmap data ───────────────────────────────────────────
+  async function loadHeatmapData() {
+    const all = await dbGetAll();
+    _heatmapCache = {};
+    all.forEach(r => { if (r.doneTasks) _heatmapCache[r.dateKey] = r.doneTasks.length; });
+    _heatmapCache[localDayKey()] = doneTasks.length;
   }
 
-  function revertDoneTask(doneTask) {
-    if (!doneTask || !doneTask.id) return;
-
-    // Stop any running timer and restore state from when the task was completed.
-    stopPomoInterval();
-    clearFireworks();
-
-    pomoSessionFinished = false;
-    pomoDone.hidden = true;
-    resultModal.hidden = true;
-
-    const minutes = taskMinutes(doneTask);
-    const restoredDurationMs = minutesToMs(minutes);
-    const restoredRemainingMs =
-      typeof doneTask.remainingMs === "number" && Number.isFinite(doneTask.remainingMs)
-        ? Math.max(0, doneTask.remainingMs)
-        : typeof doneTask.elapsedMs === "number" && Number.isFinite(doneTask.elapsedMs)
-          ? Math.max(0, restoredDurationMs - doneTask.elapsedMs)
-          : restoredDurationMs;
-
-    // Only restore running state if there was still time left when Done was pressed.
-    const restoredRunning =
-      doneTask.runningAtCompletion === true && restoredRemainingMs > 0;
-
-    // Move the task back to the to-do list (and thus back onto the wheel).
-    doneTasks = doneTasks.filter((t) => t.id !== doneTask.id);
-    tasks = tasks.concat([{ id: doneTask.id, text: doneTask.text, minutes }]);
-    saveTasks();
-
-    renderTaskList();
-    renderDoneList();
-    drawWheel();
-    updateSpinState();
-    selectedIndex = null;
-
-    pomoTask = doneTask.text;
-    pomoTaskId = doneTask.id;
-    pomoDurationMs = restoredDurationMs;
-    pomoRemainingMs = restoredRemainingMs;
-    pomoRunning = restoredRunning;
-
-    // Re-enable session controls and refresh the Pomodoro UI.
-    pomoToggle.disabled = false;
-    pomoReset.disabled = false;
-    showPomoUI();
-
-    if (pomoRunning) {
-      stopPomoInterval();
-      pomoIntervalId = setInterval(tickPomo, 250);
-    }
+  // ── Theme ──────────────────────────────────────────────────
+  function applyTheme(theme) {
+    currentTheme = theme;
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('wt_theme', theme);
+    renderThemeGrids();
+    renderWheel();
   }
 
-  function formatTime(ms) {
-    const s = Math.max(0, Math.ceil(ms / 1000));
-    const m = Math.floor(s / 60);
-    const r = s % 60;
-    return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+  function renderThemeGrids() {
+    [$('theme-grid'), $('profile-theme-grid')].forEach(grid => {
+      if (!grid) return;
+      grid.innerHTML = '';
+      Object.entries(THEMES).forEach(([key, t]) => {
+        const btn = document.createElement('button');
+        btn.className = 'theme-card' + (key === currentTheme ? ' selected' : '');
+        btn.style.background = t.bg;
+        btn.style.color      = key.includes('dark') ? '#fff' : '#1a1a1a';
+        btn.innerHTML = `
+          <div class="theme-card-swatch" style="background:${t.swatch}"></div>
+          <div class="theme-card-info">
+            <div class="theme-card-name">${escHtml(t.label)}</div>
+            <div class="theme-card-mode">${escHtml(t.mode)}</div>
+          </div>`;
+        btn.addEventListener('click', () => applyTheme(key));
+        grid.appendChild(btn);
+      });
+    });
   }
 
-  function updatePomoDisplay() {
-    pomoTime.textContent = formatTime(pomoRemainingMs);
+  // ── Tab switching ──────────────────────────────────────────
+  function switchTab(tab) {
+    currentTab = tab;
+    $$('.tab-panel').forEach(p => {
+      const isActive = p.id === `panel-${tab}`;
+      p.hidden = !isActive;
+      p.classList.toggle('active', isActive);
+    });
+    $$('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    if (tab === 'habits') { loadHeatmapData().then(renderHabitsTab); }
+    if (tab === 'you')    { renderYouTab(); }
   }
 
-  function showPomoUI() {
-    pomoIdle.hidden = true;
-    pomoActive.hidden = false;
-    pomoDone.hidden = true;
-    pomoTaskName.textContent = pomoTask;
-    const plannedMin = Math.round(pomoDurationMs / 60000);
-    pomoPlanned.textContent = `Timer: ${plannedMin} min`;
-    pomoPlanned.hidden = false;
-    updatePomoDisplay();
-    pomoToggle.textContent = pomoRunning ? "Pause" : "Resume";
-    pomoToggle.disabled = false;
-    pomoReset.disabled = false;
-    updateDoneButton();
-  }
+  // ── SVG Wheel ──────────────────────────────────────────────
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const CX = 150, WHEEL_R = 146, HUB_R = 42, LABEL_R_RATIO = 0.65;
 
-  function startPomodoroForTask(task) {
-    const text = taskText(task);
-    const mins = taskMinutes(task);
-    hideResult();
-    pomoSessionFinished = false;
-    pomoTask = text;
-    pomoTaskId = task && typeof task === "object" ? task.id : null;
-    pomoDurationMs = minutesToMs(mins);
-    pomoRemainingMs = pomoDurationMs;
-    pomoRunning = true;
-    showPomoUI();
-    stopPomoInterval();
-    pomoIntervalId = setInterval(tickPomo, 250);
-  }
-
-  function tickPomo() {
-    if (!pomoRunning) return;
-    pomoRemainingMs -= 250;
-    if (pomoRemainingMs <= 0) {
-      pomoRemainingMs = 0;
-      completePomodoroSession({ early: false });
-      return;
-    }
-    updatePomoDisplay();
-  }
-
-  function togglePomo() {
-    if (pomoRemainingMs <= 0) {
-      pomoRemainingMs = pomoDurationMs;
-      pomoDone.hidden = true;
-      pomoSessionFinished = false;
-    }
-    pomoRunning = !pomoRunning;
-    pomoToggle.textContent = pomoRunning ? "Pause" : "Resume";
-    if (pomoRunning && !pomoIntervalId) {
-      pomoIntervalId = setInterval(tickPomo, 250);
-    }
-    if (!pomoRunning) stopPomoInterval();
-    updateDoneButton();
-  }
-
-  function resetPomo() {
-    stopPomoInterval();
-    pomoRunning = false;
-    pomoRemainingMs = pomoDurationMs;
-    pomoSessionFinished = false;
-    pomoDone.hidden = true;
-    updatePomoDisplay();
-    pomoToggle.textContent = "Start";
-    updateDoneButton();
-  }
-
-  taskForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const v = taskInput.value.trim();
-    if (!v) return;
-    const mins = clampMinutes(parseInt(durationInput.value, 10));
-    tasks.push({ id: newId(), text: v, minutes: mins });
-    taskInput.value = "";
-    durationInput.value = String(DEFAULT_MINUTES);
-    saveTasks();
-    renderTaskList();
-    drawWheel();
-    updateSpinState();
-    taskInput.focus();
-  });
-
-  clearTasksBtn.addEventListener("click", () => {
+  function renderWheel() {
+    const disc   = $('wheel-disc');
+    const labels = $('wheel-labels');
+    if (!disc || !labels) return;
+    disc.innerHTML   = '';
+    labels.innerHTML = '';
     if (tasks.length === 0) return;
-    tasks = [];
-    saveTasks();
-    renderTaskList();
-    drawWheel();
-    updateSpinState();
-  });
 
-  spinBtn.addEventListener("click", spinWheel);
+    const n      = tasks.length;
+    const colors = getWheelColors();
 
-  modalStart.addEventListener("click", () => {
-    if (selectedIndex == null || !tasks[selectedIndex]) return;
-    startPomodoroForTask(tasks[selectedIndex]);
-    if (typeof Notification !== "undefined" && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
-  });
+    tasks.forEach((task, i) => {
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', slicePath(CX, WHEEL_R, i, n));
+      path.setAttribute('fill', colors[i % colors.length]);
+      path.style.cursor = 'pointer';
+      path.addEventListener('click', () => openEditTask(task.id));
+      disc.appendChild(path);
+    });
 
-  resultModal.addEventListener("click", (e) => {
-    if (e.target === resultModal) hideResult();
-  });
+    // Hub cutout
+    const hub = document.createElementNS(SVG_NS, 'circle');
+    hub.setAttribute('cx', CX);
+    hub.setAttribute('cy', CX);
+    hub.setAttribute('r',  HUB_R);
+    hub.setAttribute('fill', 'var(--bg)');
+    disc.appendChild(hub);
 
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    if (wheelModal && !wheelModal.hidden) {
-      wheelModal.hidden = true;
-      wheelOpenBtn && wheelOpenBtn.focus && wheelOpenBtn.focus();
-      return;
-    }
-    if (!resultModal.hidden) hideResult();
-  });
-
-  pomoToggle.addEventListener("click", () => {
-    if (!pomoTask) return;
-    if (pomoRemainingMs <= 0 && !pomoRunning) {
-      pomoRemainingMs = pomoDurationMs;
-      pomoDone.hidden = true;
-      pomoSessionFinished = false;
-      pomoRunning = true;
-      pomoToggle.textContent = "Pause";
-      stopPomoInterval();
-      pomoIntervalId = setInterval(tickPomo, 250);
-      updateDoneButton();
-      return;
-    }
-    togglePomo();
-  });
-
-  pomoDoneBtn.addEventListener("click", () => {
-    completePomodoroSession({ early: true });
-  });
-
-  pomoReset.addEventListener("click", () => {
-    if (!pomoTask) return;
-    resetPomo();
-  });
-
-  window.addEventListener("resize", () => {
-    resizeCanvas();
-    resizeMiniWheel();
-  });
-
-  async function init() {
-    try {
-      tasks = await loadTasks();
-    } catch {
-      tasks = [];
-      doneTasks = [];
-    }
-    setTheme(preferredTheme());
-    renderTaskList();
-    renderDoneList();
-    resizeCanvas();
-    resizeMiniWheel();
-    updateSpinState();
+    disc.setAttribute('transform', `rotate(${wheelRotation}, ${CX}, ${CX})`);
+    updateWheelLabels();
+    updateArcProgress();
+    updateHubText();
   }
 
-  init();
+  function updateWheelLabels() {
+    const labels = $('wheel-labels');
+    if (!labels || tasks.length === 0) return;
+    labels.innerHTML = '';
+    const n        = tasks.length;
+    const sliceDeg = 360 / n;
+    const labelR   = WHEEL_R * LABEL_R_RATIO;
+
+    tasks.forEach((task, i) => {
+      const angle  = wheelRotation + (i + 0.5) * sliceDeg;
+      const { x, y } = polar(CX, labelR, angle);
+      const text = document.createElementNS(SVG_NS, 'text');
+      text.setAttribute('x', x.toFixed(2));
+      text.setAttribute('y', y.toFixed(2));
+      text.setAttribute('class', 'wheel-label-text');
+      text.setAttribute('fill', '#FFFFFF');
+      text.textContent = task.initial || getInitial(task.name);
+      labels.appendChild(text);
+    });
+  }
+
+  function updateArcProgress() {
+    const arcEl = $('arc-progress');
+    if (!arcEl) return;
+    const total = doneTasks.length;
+    if (total === 0) { arcEl.setAttribute('d', ''); return; }
+    const pct  = MILESTONE > 0 ? (total % MILESTONE) / MILESTONE : 0;
+    const eff  = pct === 0 ? 1 : pct;  // full circle when at milestone exactly
+    const end  = polar(CX, WHEEL_R, eff * 360);
+    const lg   = eff > 0.5 ? 1 : 0;
+    arcEl.setAttribute('d',
+      `M ${CX} ${CX - WHEEL_R} A ${WHEEL_R} ${WHEEL_R} 0 ${lg} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`);
+  }
+
+  function updateHubText() {
+    const el = $('hub-num');
+    if (el) el.textContent = `${doneTasks.length}/${tasks.length + doneTasks.length}`;
+  }
+
+  function updateWheelVisibility() {
+    const empty  = tasks.length === 0;
+    $('empty-state').hidden  = !empty;
+    $('wheel-wrap').hidden   = empty;
+    $('spin-btn').hidden     = empty;
+    $('streak-meta').hidden  = empty;
+    $('add-first-btn').hidden  = !empty;
+    $('rest-day-link').hidden  = !empty;
+    $('today-tasks').hidden  = empty;
+    $('done-section').hidden = doneTasks.length === 0;
+    const lbl = $('today-count-label');
+    if (lbl) lbl.textContent = `Today · ${tasks.length} task${tasks.length !== 1 ? 's' : ''}`;
+  }
+
+  // ── Spin animation ─────────────────────────────────────────
+  function spin() {
+    if (tasks.length === 0 || spinFrame) return;
+    const n        = tasks.length;
+    const extra    = 5 + Math.floor(Math.random() * 3);  // 5-7 full turns
+    const offset   = Math.random() * 360;
+    const total    = extra * 360 + offset;
+    const startRot = wheelRotation;
+    const startT   = performance.now();
+
+    function frame(now) {
+      const t      = Math.min((now - startT) / SPIN_DUR, 1);
+      const eased  = easeOutCubic(t);
+      wheelRotation = startRot + total * eased;
+      const disc   = $('wheel-disc');
+      if (disc) disc.setAttribute('transform', `rotate(${wheelRotation}, ${CX}, ${CX})`);
+      updateWheelLabels();
+      if (t < 1) { spinFrame = requestAnimationFrame(frame); return; }
+      spinFrame = null;
+      wheelRotation = ((wheelRotation % 360) + 360) % 360;
+      if (disc) disc.setAttribute('transform', `rotate(${wheelRotation}, ${CX}, ${CX})`);
+      updateWheelLabels();
+      onSpinComplete();
+    }
+    spinFrame = requestAnimationFrame(frame);
+  }
+
+  function onSpinComplete() {
+    const n        = tasks.length;
+    const sliceDeg = 360 / n;
+    // pointer at top = 0°; find which unrotated slice covers that angle
+    const ptr      = ((0 - wheelRotation) % 360 + 360) % 360;
+    const idx      = Math.floor(ptr / sliceDeg) % n;
+    pickedTask     = tasks[idx];
+    openPickedSheet(pickedTask);
+  }
+
+  // ── Picked sheet ───────────────────────────────────────────
+  function openPickedSheet(task) {
+    if (!task) return;
+    const i     = tasks.indexOf(task);
+    const color = getWheelColors()[i % getWheelColors().length];
+    $('picked-badge').textContent       = task.initial || getInitial(task.name);
+    $('picked-badge').style.background  = color;
+    $('picked-name').textContent        = task.name;
+    $('picked-meta').textContent        = task.minutes ? fmtMins(task.minutes) : '';
+    openSheet('sheet-picked');
+  }
+
+  // ── Sheets ─────────────────────────────────────────────────
+  function openSheet(id) {
+    const el = $(id);
+    if (!el) return;
+    el.hidden = false;
+    // Re-trigger entry animation
+    const body = el.querySelector('.sheet-body');
+    if (body) { body.style.animation = 'none'; body.offsetHeight; body.style.animation = ''; }
+    const bd = el.querySelector('.sheet-backdrop');
+    if (bd)   { bd.style.animation   = 'none'; bd.offsetHeight;   bd.style.animation   = ''; }
+  }
+
+  function closeSheet(id) { const el = $(id); if (el) el.hidden = true; }
+
+  // ── Task CRUD ──────────────────────────────────────────────
+  function renderTaskList() {
+    const list     = $('task-list');
+    const doneList = $('done-list');
+    if (!list || !doneList) return;
+    list.innerHTML     = '';
+    doneList.innerHTML = '';
+    const colors = getWheelColors();
+    tasks.forEach((t, i)     => list.appendChild(makeTaskItem(t, colors[i % colors.length], false)));
+    doneTasks.forEach((t, i) => doneList.appendChild(makeTaskItem(t, colors[i % colors.length], true)));
+    updateWheelVisibility();
+  }
+
+  function makeTaskItem(task, color, done) {
+    const li = document.createElement('li');
+    li.className   = 'task-item';
+    li.dataset.id  = task.id;
+    li.innerHTML   = `
+      <div class="task-badge" style="background:${color}">${escHtml(task.initial || getInitial(task.name))}</div>
+      <div class="task-info">
+        <div class="task-name">${escHtml(task.name)}</div>
+        ${task.minutes ? `<div class="task-meta">${fmtMins(task.minutes)}</div>` : ''}
+      </div>
+      ${!done ? `<button class="task-drag-btn" aria-label="Reorder">
+        <svg style="width:14px;height:14px" viewBox="0 0 24 24">
+          <circle cx="9"  cy="7"  r="1.4" fill="var(--fg3)"/>
+          <circle cx="9"  cy="12" r="1.4" fill="var(--fg3)"/>
+          <circle cx="9"  cy="17" r="1.4" fill="var(--fg3)"/>
+          <circle cx="15" cy="7"  r="1.4" fill="var(--fg3)"/>
+          <circle cx="15" cy="12" r="1.4" fill="var(--fg3)"/>
+          <circle cx="15" cy="17" r="1.4" fill="var(--fg3)"/>
+        </svg>
+      </button>` : ''}
+      <button class="task-action-btn ${done ? 'checked' : ''}" aria-label="${done ? 'Done' : 'Mark done'}">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="m5 12 5 5 9-11"/></svg>
+      </button>`;
+
+    if (!done) {
+      li.querySelector('.task-action-btn').addEventListener('click', () => completeTask(task.id));
+      li.addEventListener('click', e => {
+        if (!e.target.closest('.task-action-btn') && !e.target.closest('.task-drag-btn')) {
+          openEditTask(task.id);
+        }
+      });
+    }
+    return li;
+  }
+
+  async function addTask(name, minutes) {
+    const task = { id: uid(), name, initial: getInitial(name), minutes: parseInt(minutes) || 25 };
+    tasks.push(task);
+    await saveTodayTasks();
+    renderTaskList();
+    renderWheel();
+    updateHubText();
+    closeSheet('sheet-add');
+  }
+
+  async function updateTask(id, name, minutes) {
+    const task = tasks.find(t => t.id === id);
+    if (task) {
+      task.name    = name;
+      task.initial = getInitial(name);
+      task.minutes = parseInt(minutes) || 25;
+      await saveTodayTasks();
+      renderTaskList();
+      renderWheel();
+    }
+    closeSheet('sheet-add');
+  }
+
+  async function deleteTask(id) {
+    const idx = tasks.findIndex(t => t.id === id);
+    if (idx === -1) return;
+    deletedTask      = tasks[idx];
+    deletedTaskIndex = idx;
+    tasks.splice(idx, 1);
+    await saveTodayTasks();
+    renderTaskList();
+    renderWheel();
+    closeSheet('sheet-add');
+    showUndoToast('Task removed');
+  }
+
+  async function completeTask(id) {
+    const idx = tasks.findIndex(t => t.id === id);
+    if (idx === -1) return;
+    const task = tasks.splice(idx, 1)[0];
+    task.completedAt = Date.now();
+    doneTasks.push(task);
+    _heatmapCache[localDayKey()] = doneTasks.length;
+    await saveTodayTasks();
+    renderTaskList();
+    renderWheel();
+    updateHubText();
+    updateArcProgress();
+    updateStreak();
+    showWateringMoment(task.name);
+    showDoneToast('✓ ' + task.name);
+  }
+
+  // ── Drag reorder ───────────────────────────────────────────
+  function setupDragReorder() {
+    const list = $('task-list');
+    if (!list) return;
+
+    list.addEventListener('dragstart', e => {
+      const li = e.target.closest('li.task-item');
+      if (!li) return;
+      dragSrc = li;
+      e.dataTransfer.effectAllowed = 'move';
+      requestAnimationFrame(() => { if (li) li.style.opacity = '.4'; });
+    });
+    list.addEventListener('dragend', e => {
+      if (dragSrc) dragSrc.style.opacity = '';
+      dragSrc = null;
+    });
+    list.addEventListener('dragover', e => {
+      e.preventDefault();
+      const li = e.target.closest('li.task-item');
+      if (!li || !dragSrc || li === dragSrc) return;
+      const all    = [...list.querySelectorAll('li.task-item')];
+      const srcIdx = all.indexOf(dragSrc);
+      const tgtIdx = all.indexOf(li);
+      if (srcIdx < tgtIdx) list.insertBefore(dragSrc, li.nextSibling);
+      else                 list.insertBefore(dragSrc, li);
+    });
+    list.addEventListener('drop', async e => {
+      e.preventDefault();
+      const all    = [...list.querySelectorAll('li.task-item')];
+      tasks = all.map(li => tasks.find(t => t.id === li.dataset.id)).filter(Boolean);
+      await saveTodayTasks();
+      renderWheel();
+    });
+
+    const attachDrag = () => {
+      list.querySelectorAll('li.task-item').forEach(li => {
+        const btn = li.querySelector('.task-drag-btn');
+        if (!btn) return;
+        btn.addEventListener('mousedown', () => { li.draggable = true; });
+        btn.addEventListener('mouseup',   () => { li.draggable = false; });
+        btn.addEventListener('mouseleave',() => { li.draggable = false; });
+      });
+    };
+    new MutationObserver(attachDrag).observe(list, { childList: true });
+    attachDrag();
+  }
+
+  // ── Task sheet open ────────────────────────────────────────
+  function openAddTask() {
+    editingTaskId = null;
+    $('add-sheet-title').textContent    = 'New task';
+    $('add-task-name').value            = '';
+    $('add-task-mins').value            = '25';
+    $('add-task-submit-btn').textContent = 'Add task';
+    $('delete-task-btn').hidden         = true;
+    openSheet('sheet-add');
+    setTimeout(() => $('add-task-name').focus(), 280);
+  }
+
+  function openEditTask(id) {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+    editingTaskId = id;
+    $('add-sheet-title').textContent    = 'Edit task';
+    $('add-task-name').value            = task.name;
+    $('add-task-mins').value            = task.minutes || 25;
+    $('add-task-submit-btn').textContent = 'Save';
+    $('delete-task-btn').hidden         = false;
+    openSheet('sheet-add');
+    setTimeout(() => $('add-task-name').focus(), 280);
+  }
+
+  // ── Undo / Toasts ──────────────────────────────────────────
+  function showUndoToast(msg) {
+    $('undo-msg').textContent    = msg;
+    $('undo-toast').hidden       = false;
+    const bar = $('undo-bar');
+    bar.style.animation = 'none';
+    bar.offsetHeight;
+    bar.style.animation = '';
+    clearTimeout(undoTimeout);
+    undoTimeout = setTimeout(() => {
+      $('undo-toast').hidden = true;
+      deletedTask = null;
+    }, 3000);
+  }
+
+  function showDoneToast(msg) {
+    const el = $('done-toast');
+    el.textContent = msg;
+    el.hidden = false;
+    setTimeout(() => { el.hidden = true; }, 2000);
+  }
+
+  // ── Streak ────────────────────────────────────────────────
+  async function updateStreak() {
+    const streak = await calcOverallStreak();
+    const cnt = $('streak-count');
+    if (cnt) cnt.textContent = streak;
+    const meta = $('streak-to-next');
+    if (meta) {
+      const next = (Math.floor(streak / 7) + 1) * 7;
+      meta.textContent = `${streak}-day streak · ${next - streak} to ${next}`;
+    }
+  }
+
+  // ── Watering moment ────────────────────────────────────────
+  function showWateringMoment(name) {
+    $('watering-sub').textContent    = name || '';
+    $('watering-moment').hidden      = false;
+    clearTimeout(wateringTimeout);
+    wateringTimeout = setTimeout(() => { $('watering-moment').hidden = true; }, 2200);
+  }
+
+  // ── Focus timer ────────────────────────────────────────────
+  function startFocus(task) {
+    closeSheet('sheet-picked');
+    focusTask      = task;
+    focusTotalSecs = (task.minutes || 25) * 60;
+    focusRemSecs   = focusTotalSecs;
+    focusPaused    = false;
+
+    const i     = tasks.indexOf(task);
+    const color = getWheelColors()[i >= 0 ? i % getWheelColors().length : 0];
+    $('focus-badge').textContent      = task.initial || getInitial(task.name);
+    $('focus-badge').style.background = color;
+    $('focus-task-name').textContent  = task.name;
+    $('focus-time').textContent       = fmtTime(focusRemSecs);
+    $('focus-status-label').textContent = 'remaining';
+    updateFocusRing();
+
+    $('focus-screen').hidden = false;
+    clearInterval(focusInterval);
+    focusInterval = setInterval(tickFocus, 1000);
+    updateFocusPauseIcon();
+  }
+
+  function tickFocus() {
+    if (focusPaused) return;
+    focusRemSecs = Math.max(0, focusRemSecs - 1);
+    $('focus-time').textContent = fmtTime(focusRemSecs);
+    updateFocusRing();
+    if (focusRemSecs <= 0) {
+      clearInterval(focusInterval);
+      $('focus-status-label').textContent = 'done!';
+      setTimeout(completeFocus, 1000);
+    }
+  }
+
+  function updateFocusRing() {
+    const ring = $('focus-ring');
+    if (!ring) return;
+    const circ = 691.15;  // 2π × 110
+    const pct  = focusTotalSecs > 0 ? focusRemSecs / focusTotalSecs : 0;
+    ring.style.strokeDashoffset = String(circ * (1 - pct));
+  }
+
+  function completeFocus() {
+    clearInterval(focusInterval);
+    $('focus-screen').hidden = true;
+    if (focusTask) completeTask(focusTask.id);
+    focusTask = null;
+  }
+
+  function toggleFocusPause() {
+    focusPaused = !focusPaused;
+    $('focus-status-label').textContent = focusPaused ? 'paused' : 'remaining';
+    updateFocusPauseIcon();
+  }
+
+  function updateFocusPauseIcon() {
+    const icon = $('focus-pause-icon');
+    if (!icon) return;
+    icon.innerHTML = focusPaused
+      ? '<path d="M8 5v14l11-7L8 5z" fill="currentColor"/>'
+      : '<path d="M8 5v14M16 5v14"/>';
+  }
+
+  // ── Habits tab ────────────────────────────────────────────
+  function renderHabitsTab() {
+    renderHeatmap($('habits-heatmap'), 14);
+    renderHabitStats();
+    renderHabitList();
+  }
+
+  function renderHeatmap(container, weeks) {
+    if (!container) return;
+    container.innerHTML = '';
+    const grid  = document.createElement('div');
+    grid.className = 'heatmap-grid';
+    const today = new Date();
+    const DAYS  = 7 * weeks;
+    const start = new Date(today);
+    start.setDate(today.getDate() - DAYS + 1);
+
+    for (let d = 0; d < DAYS; d++) {
+      const date  = new Date(start);
+      date.setDate(start.getDate() + d);
+      const key   = localDayKey(date);
+      const count = _heatmapCache[key] || 0;
+      const cell  = document.createElement('div');
+      cell.className = 'heatmap-cell';
+      const lvl = count === 0 ? 0 : count === 1 ? 1 : count <= 3 ? 2 : count <= 5 ? 3 : 4;
+      if (lvl > 0) cell.setAttribute('data-level', lvl);
+      cell.title = `${key}: ${count} done`;
+      grid.appendChild(cell);
+    }
+    container.appendChild(grid);
+  }
+
+  function renderHabitStats() {
+    const el = $('habits-stats');
+    if (!el) return;
+    const doneToday  = habits.filter(h => isHabitDoneToday(h.id)).length;
+    const maxStreak  = habits.reduce((m, h) => Math.max(m, calcHabitStreak(h.id)), 0);
+    el.innerHTML = `
+      <div class="stat-card"><div class="stat-value">${doneToday}/${habits.length}</div><div class="stat-label">Today</div></div>
+      <div class="stat-card"><div class="stat-value">${maxStreak}</div><div class="stat-label">Best streak</div></div>
+      <div class="stat-card"><div class="stat-value">${habits.length}</div><div class="stat-label">Habits</div></div>`;
+  }
+
+  function renderHabitList() {
+    const list = $('habits-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const colors = getWheelColors();
+    habits.forEach((habit, i) => {
+      const done   = isHabitDoneToday(habit.id);
+      const streak = calcHabitStreak(habit.id);
+      const color  = colors[i % colors.length];
+      const li     = document.createElement('li');
+      li.className = 'habit-item';
+      li.innerHTML = `
+        <div class="habit-badge" style="background:${color}">${escHtml(habit.initial || getInitial(habit.name))}</div>
+        <div class="habit-info">
+          <div class="habit-name">${escHtml(habit.name)}</div>
+          <div class="habit-streak">${escHtml(habit.cat)} · ${streak > 0 ? streak + '-day streak' : 'No streak yet'}</div>
+        </div>
+        <button class="habit-toggle-btn ${done ? 'done' : ''}" aria-label="${done ? 'Done' : 'Mark done'}">
+          <svg class="glyph" viewBox="0 0 24 24"><path d="m5 12 5 5 9-11"/></svg>
+        </button>`;
+      li.querySelector('.habit-toggle-btn').addEventListener('click', () => toggleHabit(habit.id));
+      li.addEventListener('click', e => {
+        if (!e.target.closest('.habit-toggle-btn')) openEditHabit(habit.id);
+      });
+      list.appendChild(li);
+    });
+  }
+
+  async function toggleHabit(id) {
+    const key = localDayKey();
+    if (!habitLog[key]) habitLog[key] = {};
+    if (habitLog[key][id]) {
+      delete habitLog[key][id];
+    } else {
+      habitLog[key][id] = true;
+      const h = habits.find(x => x.id === id);
+      showWateringMoment(h ? h.name : 'Habit');
+    }
+    saveHabitLog();
+    renderHabitsTab();
+  }
+
+  function openAddHabit() {
+    editingHabitId = null;
+    $('habit-sheet-title').textContent = 'New habit';
+    $('habit-name-input').value        = '';
+    $('habit-cat-input').value         = 'Physical';
+    $('habit-mins-input').value        = '10';
+    $('delete-habit-btn').hidden       = true;
+    openSheet('sheet-habit');
+    setTimeout(() => $('habit-name-input').focus(), 280);
+  }
+
+  function openEditHabit(id) {
+    const h = habits.find(x => x.id === id);
+    if (!h) return;
+    editingHabitId = id;
+    $('habit-sheet-title').textContent = 'Edit habit';
+    $('habit-name-input').value        = h.name;
+    $('habit-cat-input').value         = h.cat || 'Physical';
+    $('habit-mins-input').value        = h.minutes || 10;
+    $('delete-habit-btn').hidden       = false;
+    openSheet('sheet-habit');
+    setTimeout(() => $('habit-name-input').focus(), 280);
+  }
+
+  function saveHabitFromForm() {
+    const name    = $('habit-name-input').value.trim();
+    const cat     = $('habit-cat-input').value;
+    const minutes = parseInt($('habit-mins-input').value) || 0;
+    if (!name) return;
+    if (editingHabitId) {
+      const h = habits.find(x => x.id === editingHabitId);
+      if (h) { h.name = name; h.cat = cat; h.minutes = minutes; h.initial = getInitial(name); }
+    } else {
+      habits.push({ id: uid(), name, cat, minutes, initial: getInitial(name) });
+    }
+    saveHabits();
+    closeSheet('sheet-habit');
+    renderHabitsTab();
+  }
+
+  function deleteHabit(id) {
+    habits = habits.filter(h => h.id !== id);
+    saveHabits();
+    closeSheet('sheet-habit');
+    renderHabitsTab();
+  }
+
+  // ── You tab ───────────────────────────────────────────────
+  async function renderYouTab() {
+    renderThemeGrids();
+    const streak     = await calcOverallStreak();
+    const all        = await dbGetAll();
+    const totalDone  = all.reduce((s, r) => s + (r.doneTasks ? r.doneTasks.length : 0), 0) + doneTasks.length;
+
+    const statsEl = $('you-stats');
+    if (statsEl) {
+      statsEl.innerHTML = `
+        <div class="stat-card"><div class="stat-value">${streak}</div><div class="stat-label">Day streak</div></div>
+        <div class="stat-card"><div class="stat-value">${totalDone}</div><div class="stat-label">Tasks done</div></div>`;
+    }
+    const toggle = $('habits-toggle-btn');
+    if (toggle) toggle.setAttribute('aria-checked', habitsEnabled ? 'true' : 'false');
+    const tabBtn = $('tab-habits-btn');
+    if (tabBtn) tabBtn.hidden = !habitsEnabled;
+  }
+
+  // ── History sheet ─────────────────────────────────────────
+  async function openHistorySheet() {
+    await loadHeatmapData();
+    renderHeatmap($('history-heatmap'), 12);
+    await renderHistoryStats();
+    await renderHistoryLog();
+    openSheet('sheet-history');
+  }
+
+  async function renderHistoryStats() {
+    const streak    = await calcOverallStreak();
+    const all       = await dbGetAll();
+    const total     = all.reduce((s, r) => s + (r.doneTasks ? r.doneTasks.length : 0), 0) + doneTasks.length;
+    const active    = new Set(all.filter(r => r.doneTasks && r.doneTasks.length > 0).map(r => r.dateKey)).size;
+    const el        = $('history-stats');
+    if (el) {
+      el.innerHTML = `
+        <div class="stat-card"><div class="stat-value">${streak}</div><div class="stat-label">Streak</div></div>
+        <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">Done</div></div>
+        <div class="stat-card"><div class="stat-value">${active}</div><div class="stat-label">Active days</div></div>`;
+    }
+  }
+
+  async function renderHistoryLog() {
+    const log  = $('history-log');
+    if (!log) return;
+    log.innerHTML = '';
+    const all  = await dbGetAll();
+    all.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+    const items = [];
+    doneTasks.forEach(t => items.push({ name: t.name, date: localDayKey() }));
+    all.forEach(r => (r.doneTasks || []).forEach(t => items.push({ name: t.name, date: r.dateKey })));
+
+    if (items.length === 0) {
+      log.innerHTML = '<li style="color:var(--fg3);font-size:13px">No tasks completed yet</li>';
+      return;
+    }
+    items.slice(0, 20).forEach(item => {
+      const li = document.createElement('li');
+      li.className = 'history-log-item';
+      li.innerHTML = `
+        <div class="history-log-dot"></div>
+        <div class="history-log-name">${escHtml(item.name)}</div>
+        <div class="history-log-date">${item.date}</div>`;
+      log.appendChild(li);
+    });
+  }
+
+  // ── Profile sheet ─────────────────────────────────────────
+  async function openProfileSheet() {
+    const streak    = await calcOverallStreak();
+    const all       = await dbGetAll();
+    const total     = all.reduce((s, r) => s + (r.doneTasks ? r.doneTasks.length : 0), 0) + doneTasks.length;
+    const el        = $('profile-stats');
+    if (el) {
+      el.innerHTML = `
+        <div class="stat-card"><div class="stat-value">${streak}</div><div class="stat-label">Day streak</div></div>
+        <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">Tasks done</div></div>`;
+    }
+    renderThemeGrids();
+    openSheet('sheet-profile');
+  }
+
+  // ── Event bindings ─────────────────────────────────────────
+  function bindEvents() {
+    // Tab bar
+    $$('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+    // Sheet close (backdrop & ✕ buttons)
+    document.addEventListener('click', e => {
+      const id = e.target.closest('[data-close]')?.dataset.close;
+      if (id) closeSheet(id);
+    });
+
+    // Add task
+    $('add-btn').addEventListener('click', openAddTask);
+    $('add-first-btn').addEventListener('click', openAddTask);
+    $('add-task-inline-btn').addEventListener('click', openAddTask);
+    $('add-task-dashed').addEventListener('click', openAddTask);
+    $('empty-circle-btn').addEventListener('click', openAddTask);
+
+    // Add task form submit
+    $('add-task-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = $('add-task-name').value.trim();
+      const mins = $('add-task-mins').value;
+      if (!name) return;
+      if (editingTaskId) await updateTask(editingTaskId, name, mins);
+      else               await addTask(name, mins);
+    });
+    $('delete-task-btn').addEventListener('click', () => { if (editingTaskId) deleteTask(editingTaskId); });
+
+    // Spin
+    $('spin-btn').addEventListener('click', spin);
+
+    // Post-spin sheet
+    $('start-focus-btn').addEventListener('click', () => { if (pickedTask) startFocus(pickedTask); });
+    $('respin-btn').addEventListener('click', () => { closeSheet('sheet-picked'); spin(); });
+
+    // Focus screen
+    $('focus-back-btn').addEventListener('click', () => {
+      clearInterval(focusInterval);
+      $('focus-screen').hidden = true;
+      focusTask = null;
+    });
+    $('focus-pause-btn').addEventListener('click', toggleFocusPause);
+    $('focus-done-btn').addEventListener('click', completeFocus);
+
+    // Watering: tap to dismiss
+    $('watering-moment').addEventListener('click', () => {
+      clearTimeout(wateringTimeout);
+      $('watering-moment').hidden = true;
+    });
+
+    // Habits tab
+    $('add-habit-btn').addEventListener('click', openAddHabit);
+    $('add-habit-form').addEventListener('submit', e => { e.preventDefault(); saveHabitFromForm(); });
+    $('delete-habit-btn').addEventListener('click', () => { if (editingHabitId) deleteHabit(editingHabitId); });
+
+    // Streak / history
+    $('history-link').addEventListener('click', openHistorySheet);
+    $('streak-btn').addEventListener('click', openHistorySheet);
+
+    // Profile
+    $('avatar-btn').addEventListener('click', openProfileSheet);
+
+    // Undo
+    $('undo-btn').addEventListener('click', async () => {
+      if (!deletedTask) return;
+      tasks.splice(deletedTaskIndex, 0, deletedTask);
+      deletedTask = null;
+      clearTimeout(undoTimeout);
+      $('undo-toast').hidden = true;
+      await saveTodayTasks();
+      renderTaskList();
+      renderWheel();
+    });
+
+    // Habits toggle
+    $('habits-toggle-btn').addEventListener('click', () => {
+      habitsEnabled = !habitsEnabled;
+      localStorage.setItem('wt_habits_enabled', String(habitsEnabled));
+      renderYouTab();
+      if (!habitsEnabled && currentTab === 'habits') switchTab('tasks');
+    });
+
+    // Rest day
+    $('rest-day-link').addEventListener('click', () => showDoneToast('Rest day — nice.'));
+
+    // Escape closes sheets
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      $$('.sheet-overlay:not([hidden])').forEach(s => { s.hidden = true; });
+      if (!$('focus-screen').hidden) {
+        clearInterval(focusInterval);
+        $('focus-screen').hidden = true;
+      }
+    });
+  }
+
+  // ── Init ──────────────────────────────────────────────────
+  async function init() {
+    db = await openDB();
+    loadHabits();
+    await loadTodayTasks();
+    await loadHeatmapData();
+
+    applyTheme(currentTheme);
+    renderTaskList();
+    renderWheel();
+    updateHubText();
+    updateArcProgress();
+    await updateStreak();
+
+    const tabBtn = $('tab-habits-btn');
+    if (tabBtn) tabBtn.hidden = !habitsEnabled;
+
+    bindEvents();
+    setupDragReorder();
+  }
+
+  init().catch(err => console.error('[WheelTodo]', err));
+
 })();

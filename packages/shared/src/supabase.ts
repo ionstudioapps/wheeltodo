@@ -21,18 +21,47 @@ export function getSupabaseEnv(): SupabaseEnv {
   return EnvSchema.parse({ url, anonKey });
 }
 
-let client: SupabaseClient | null = null;
+/**
+ * Browser-only singleton. Safe to call from client components and Expo.
+ * Do NOT call this from Next.js Server Components, Route Handlers, or
+ * middleware — use createSupabaseServerClient() there instead so each
+ * request gets its own isolated instance.
+ */
+let browserClient: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient {
-  if (client) return client;
+  if (typeof window === "undefined") {
+    throw new Error(
+      "getSupabaseClient() was called in a server context. " +
+        "Use createSupabaseServerClient() for server-side usage."
+    );
+  }
+  if (browserClient) return browserClient;
   const env = getSupabaseEnv();
-  client = createClient(env.url, env.anonKey, {
+  browserClient = createClient(env.url, env.anonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },
   });
-  return client;
+  return browserClient;
+}
+
+/**
+ * Server-safe factory. Creates a fresh Supabase client per call —
+ * safe to use in Next.js Server Components, Route Handlers, and
+ * middleware where a shared singleton would leak session state across
+ * requests.
+ */
+export function createSupabaseServerClient(): SupabaseClient {
+  const env = getSupabaseEnv();
+  return createClient(env.url, env.anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
 }
 
