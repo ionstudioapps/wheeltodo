@@ -218,7 +218,7 @@
         const btn = document.createElement('button');
         btn.className = 'theme-card' + (key === currentTheme ? ' selected' : '');
         btn.style.background = t.bg;
-        btn.style.color      = key.includes('dark') ? '#fff' : '#1a1a1a';
+        btn.style.color      = t.mode.toLowerCase().includes('dark') ? '#fff' : '#1a1a1a';
         btn.innerHTML = `
           <div class="theme-card-swatch" style="background:${t.swatch}"></div>
           <div class="theme-card-info">
