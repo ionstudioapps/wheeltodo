@@ -234,9 +234,7 @@
         const btn = document.createElement('button');
         btn.className = 'theme-card' + (key === currentTheme ? ' selected' : '');
         btn.innerHTML = `
-          <div class="theme-card-dot" style="background:${t.bg}">
-            <div style="position:absolute;right:-4px;top:-4px;width:14px;height:14px;border-radius:50%;background:${t.swatch}"></div>
-          </div>
+          <div class="theme-card-dot" style="background:${t.swatch}"></div>
           <div class="theme-card-info">
             <div class="theme-card-name">${escHtml(t.label)}</div>
             <div class="theme-card-mode">${escHtml(t.mode)}</div>
@@ -982,10 +980,11 @@
     renderThemeGrids();
     cachedStreak    = await calcOverallStreak();
     const all       = await dbGetAll();
+    // dbGetAll includes today (saveTodayTasks syncs on every complete) — no need to add getDoneTasks()
     const totalDone = all.reduce((s, r) => {
       if (r.tasks) return s + r.tasks.filter(t => t.done).length;
       return s + (r.doneTasks ? r.doneTasks.length : 0);
-    }, 0) + getDoneTasks().length;
+    }, 0);
 
     const avatarEl = $('you-avatar-area');
     if (avatarEl) {
@@ -1031,7 +1030,7 @@
     const total  = all.reduce((s, r) => {
       if (r.tasks) return s + r.tasks.filter(t => t.done).length;
       return s + (r.doneTasks ? r.doneTasks.length : 0);
-    }, 0) + getDoneTasks().length;
+    }, 0);
     const activeDays = new Set(all.filter(r => {
       if (r.tasks) return r.tasks.some(t => t.done);
       return r.doneTasks && r.doneTasks.length > 0;
@@ -1052,7 +1051,7 @@
     const all = await dbGetAll();
     all.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
     const items = [];
-    getDoneTasks().forEach(t => items.push({ name: t.name, date: localDayKey() }));
+    // Build from DB only (DB always current — saveTodayTasks called on every complete)
     all.forEach(r => {
       const done = r.tasks ? r.tasks.filter(t => t.done) : (r.doneTasks || []);
       done.forEach(t => items.push({ name: t.name, date: r.dateKey }));
@@ -1079,7 +1078,7 @@
     const total  = all.reduce((s, r) => {
       if (r.tasks) return s + r.tasks.filter(t => t.done).length;
       return s + (r.doneTasks ? r.doneTasks.length : 0);
-    }, 0) + getDoneTasks().length;
+    }, 0);
     const el = $('profile-stats');
     if (el) {
       el.innerHTML = `
