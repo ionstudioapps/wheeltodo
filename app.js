@@ -266,7 +266,7 @@
   const CX      = 150;
   const SLICE_R = 142;  // R - 8
   const ARC_R   = 148;  // R - 2
-  const HUB_R   = 8;    // tiny center pin (full-wheel look)
+  const HUB_R   = 22;   // small center hole
   const LABEL_R = 100;  // icon position radius
 
   // Stroke-based icons for wheel slices (centered at 0,0, ±6-7 units)
@@ -308,6 +308,9 @@
       const path = document.createElementNS(SVG_NS, 'path');
       path.setAttribute('d', slicePath(CX, SLICE_R, i, n));
       path.setAttribute('fill', colors[(task.colorIdx ?? i) % colors.length]);
+      path.setAttribute('stroke', 'var(--bg)');
+      path.setAttribute('stroke-width', '3');
+      path.setAttribute('stroke-linejoin', 'round');
       path.style.cursor = 'pointer';
       path.addEventListener('click', () => openPickedSheet(task));
       disc.appendChild(path);
