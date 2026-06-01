@@ -52,9 +52,9 @@
           <div class="wheel-pointer-notch"></div>
           <div class="wheel-svg-container">
             <svg id="wheel-svg" viewBox="0 0 300 300" width="300" height="300">
-              <!-- Ambient milestone arc (fixed, not rotating) -->
-              <circle id="arc-track" cx="150" cy="150" r="146" fill="none" stroke-width="2.5"/>
-              <path id="arc-progress" fill="none" stroke-width="2.5" stroke-linecap="round"/>
+              <!-- Ambient milestone arc (fixed, outer ring — not rotating) -->
+              <circle id="arc-track" cx="150" cy="150" r="148" fill="none" stroke-width="2"/>
+              <path id="arc-progress" fill="none" stroke-width="2" stroke-linecap="round"/>
               <!-- Rotating disc group -->
               <g id="wheel-disc"></g>
               <!-- Labels stay upright (counter-rotated per frame) -->
@@ -142,7 +142,10 @@
         <div class="hero-accent">Maker.</div>
       </div>
       <div class="tab-scroll-content">
-        <div id="you-stats" class="stats-grid two-col"></div>
+        <!-- Avatar + identity row (prototype pattern) -->
+        <div id="you-avatar-area" class="you-avatar-area"></div>
+
+        <div id="you-stats" class="stats-grid two-col" style="margin-top:0"></div>
 
         <div class="settings-section-label">Theme</div>
         <div id="theme-grid" class="theme-grid"></div>
@@ -151,7 +154,7 @@
         <div class="settings-row" id="habits-toggle-row">
           <div>
             <div class="settings-row-title">Habits tab</div>
-            <div class="settings-row-sub">Track recurring activities and streaks</div>
+            <div class="settings-row-sub">Heatmap + daily check-ins. Off keeps things light.</div>
           </div>
           <button id="habits-toggle-btn" class="toggle-switch" role="switch" aria-checked="true">
             <div class="toggle-thumb"></div>
@@ -196,11 +199,24 @@
     <form id="add-task-form" novalidate>
       <label class="form-label" for="add-task-name">Task name</label>
       <input id="add-task-name" class="form-input" type="text" placeholder="What needs doing?" maxlength="120" autocomplete="off" />
-      <label class="form-label" for="add-task-mins">Duration (minutes)</label>
-      <input id="add-task-mins" class="form-input" type="number" min="1" max="480" value="25" />
+
+      <!-- Color picker swatches -->
+      <div class="form-label" style="margin-top:16px">Color</div>
+      <div id="add-task-color-picker" class="color-picker"></div>
+
+      <!-- Duration chips -->
+      <div class="form-label" style="margin-top:16px">Focus duration</div>
+      <div id="add-task-duration-chips" class="duration-chips">
+        <button type="button" class="duration-chip" data-mins="5">5m</button>
+        <button type="button" class="duration-chip" data-mins="10">10m</button>
+        <button type="button" class="duration-chip active" data-mins="25">25m</button>
+        <button type="button" class="duration-chip" data-mins="45">45m</button>
+        <button type="button" class="duration-chip" data-mins="60">60m</button>
+      </div>
+
       <div class="form-actions">
-        <button type="submit" class="btn-pill btn-fg" id="add-task-submit-btn">Add task</button>
-        <button type="button" class="btn-danger" id="delete-task-btn" hidden>Delete</button>
+        <button type="submit" class="btn-pill btn-fg" id="add-task-submit-btn">Add to wheel</button>
+        <button type="button" class="btn-danger" id="delete-task-btn" hidden>Delete task</button>
       </div>
     </form>
   </div>
@@ -305,10 +321,11 @@
     <div id="focus-badge" class="focus-badge">D</div>
     <div id="focus-task-name" class="focus-task-name"></div>
     <div class="focus-ring-container">
+      <!-- r=112 → circumference = 2π×112 ≈ 703.72 (matches prototype: size=240, r=(240-16)/2=112) -->
       <svg id="focus-svg" viewBox="0 0 240 240" width="240" height="240">
-        <circle cx="120" cy="120" r="110" class="focus-ring-track"/>
-        <circle cx="120" cy="120" r="110" id="focus-ring" class="focus-ring-fill"
-          stroke-dasharray="691.15" stroke-dashoffset="0"
+        <circle cx="120" cy="120" r="112" class="focus-ring-track"/>
+        <circle cx="120" cy="120" r="112" id="focus-ring" class="focus-ring-fill"
+          stroke-dasharray="703.72" stroke-dashoffset="0"
           transform="rotate(-90 120 120)"/>
       </svg>
       <div class="focus-time-inner">
@@ -348,11 +365,26 @@
   </div>
 </div>
 
-<!-- Toasts -->
-<div id="done-toast" class="done-toast" hidden></div>
+<!-- Done toast — card from top (prototype: position top:64, bgCard, border, shadow) -->
+<div id="done-toast" class="done-toast" hidden>
+  <div class="done-toast-check">
+    <svg viewBox="0 0 24 24" style="width:16px;height:16px;display:block" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m5 12 5 5 9-11"/>
+    </svg>
+  </div>
+  <div class="done-toast-info">
+    <div id="done-toast-name" class="done-toast-name"></div>
+    <div id="done-toast-mins" class="done-toast-mins"></div>
+  </div>
+</div>
+
+<!-- Undo toast — task name in Instrument Serif italic (prototype pattern) -->
 <div id="undo-toast" class="undo-toast" hidden>
   <div class="undo-content">
-    <span id="undo-msg">Task removed</span>
+    <svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0;display:block" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>
+    </svg>
+    <span class="undo-label">Deleted <em id="undo-task-name" class="undo-task-serif"></em></span>
     <button id="undo-btn" class="undo-action-btn">Undo</button>
   </div>
   <div id="undo-bar" class="undo-bar"></div>

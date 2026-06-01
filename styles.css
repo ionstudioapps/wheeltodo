@@ -135,7 +135,7 @@ a { color: inherit; text-decoration: none; }
   gap: 5px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--fg2);
+  color: var(--accent);
   padding: 6px 10px 6px 8px;
   border-radius: 20px;
   transition: background .15s;
@@ -210,7 +210,7 @@ a { color: inherit; text-decoration: none; }
   font-style: italic;
   font-size: 42px;
   font-weight: 400;
-  color: var(--fg);
+  color: var(--accent);
   line-height: 1.05;
   letter-spacing: -.02em;
 }
@@ -293,12 +293,12 @@ a { color: inherit; text-decoration: none; }
   stroke: var(--accent);
 }
 
-/* Hub overlay */
+/* Hub overlay — matches prototype: HUB=84, overlay=HUB*2-8=160px */
 .wheel-hub-overlay {
   position: absolute;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  width: 80px; height: 80px;
+  width: 160px; height: 160px;
   border-radius: 50%;
   background: var(--hub-bg);
   backdrop-filter: blur(8px);
@@ -310,8 +310,8 @@ a { color: inherit; text-decoration: none; }
   pointer-events: none;
   z-index: 5;
 }
-.hub-num { font-size: 16px; font-weight: 700; color: var(--fg); line-height: 1; }
-.hub-sub { font-size: 9px; font-weight: 500; color: var(--fg2); text-transform: uppercase; letter-spacing: .08em; margin-top: 3px; }
+.hub-num { font-size: 28px; font-weight: 600; color: var(--fg); line-height: 1; letter-spacing: -.02em; }
+.hub-sub { font-size: 10.5px; font-weight: 500; color: var(--fg2); text-transform: uppercase; letter-spacing: .12em; margin-top: 4px; }
 
 /* Wheel slice labels */
 .wheel-label-text {
@@ -495,6 +495,20 @@ a { color: inherit; text-decoration: none; }
 .task-action-btn.checked { border-color: var(--success); background: var(--success); color: var(--bg); }
 .task-action-btn .glyph { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
+/* Task name done state */
+.task-name-done { text-decoration: line-through; color: var(--fg3); }
+
+/* Task edit button */
+.task-edit-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  color: var(--fg3);
+  flex-shrink: 0;
+  transition: color .15s, background .15s;
+}
+.task-edit-btn:hover { color: var(--fg2); background: var(--bg-input); }
+
 .task-drag-btn {
   display: flex; align-items: center; justify-content: center;
   width: 24px; height: 32px;
@@ -545,6 +559,16 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid var(--bar-border);
   padding: 14px 12px 12px;
 }
+/* Serif italic stat values (prototype: Instrument Serif italic, 26-34px) */
+.serif-italic {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-style: italic;
+  font-size: 34px;
+  font-weight: 400;
+  letter-spacing: -.02em;
+  line-height: 1;
+}
+
 .stat-value {
   font-size: 24px;
   font-weight: 700;
@@ -560,46 +584,84 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: .07em;
 }
 
-/* Habits list */
-.habits-list { display: flex; flex-direction: column; gap: 8px; }
+/* Habits list — prototype: row items with checkbox, info, flame streak */
+.habits-list { display: flex; flex-direction: column; }
 
 .habit-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  background: var(--bg-card);
-  border-radius: 14px;
-  border: 1px solid var(--bar-border);
-  transition: background .15s;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--bar-border);
+  cursor: pointer;
+  transition: opacity .15s;
 }
-.habit-badge {
-  width: 32px; height: 32px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 700;
-  color: #fff;
-}
-.habit-info { flex: 1; min-width: 0; }
-.habit-name { font-size: 14px; font-weight: 500; color: var(--fg); }
-.habit-streak { font-size: 12px; color: var(--fg2); margin-top: 2px; }
+.habit-item:last-child { border-bottom: none; }
 
-.habit-toggle-btn {
-  width: 32px; height: 32px;
-  border-radius: 50%;
-  border: 1.8px solid var(--fg3);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--fg3);
+/* Rounded-square checkbox (prototype: 26×26, borderRadius 8) */
+.habit-checkbox {
+  width: 26px; height: 26px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(128,128,128,0.28);
   flex-shrink: 0;
-  transition: border-color .15s, background .15s, color .15s;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  transition: background .18s, border-color .18s;
+  background: transparent;
 }
-.habit-toggle-btn:hover { border-color: var(--success); color: var(--success); }
-.habit-toggle-btn.done { border-color: var(--success); background: var(--success); color: var(--bg); }
-.habit-toggle-btn .glyph { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.habit-checkbox.done { color: #fff; }
+
+.habit-info { flex: 1; min-width: 0; }
+.habit-name { font-size: 14.5px; font-weight: 500; color: var(--fg); }
+.habit-name.done { text-decoration: line-through; text-decoration-color: var(--fg3); color: var(--fg2); }
+.habit-cat { font-size: 11px; color: var(--fg3); margin-top: 1px; }
+
+/* Flame + streak count on right (prototype: accent color) */
+.habit-streak-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
 
 /* ── You tab ───────────────────────────────────────────────── */
+
+/* Avatar + identity row (prototype pattern) */
+.you-avatar-area {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.you-avatar {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.you-identity { flex: 1; }
+.you-username { font-size: 17px; font-weight: 600; color: var(--fg); letter-spacing: -.01em; }
+.you-joined   { font-size: 12px; color: var(--fg2); margin-top: 2px; }
+.you-edit-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--bar-border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  background: transparent;
+  transition: background .15s;
+}
+.you-edit-btn:hover { background: var(--bg-input); }
+
 .settings-section-label {
   font-size: 11px;
   font-weight: 600;
@@ -980,23 +1042,36 @@ a { color: inherit; text-decoration: none; }
 .watering-sub  { font-size: 14px; color: var(--fg2); text-align: center; }
 
 /* ── Toasts ────────────────────────────────────────────────── */
+/* Done toast — card from top (prototype: top:64px, bg-card, shadow) */
 .done-toast {
   position: fixed;
-  bottom: 80px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 64px;
+  left: 16px; right: 16px;
   z-index: 400;
-  background: var(--fg);
-  color: var(--bg);
-  font-size: 14px;
-  font-weight: 500;
-  padding: 10px 20px;
-  border-radius: 20px;
-  white-space: nowrap;
-  animation: toastIn .2s ease;
+  background: var(--bg-card);
+  border-radius: 16px;
+  border: 1px solid var(--bar-border);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  animation: wtToast .22s cubic-bezier(0.32,0.72,0,1);
   pointer-events: none;
 }
 .done-toast[hidden] { display: none; }
+.done-toast-check {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--success);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.done-toast-info { flex: 1; min-width: 0; }
+.done-toast-name { font-size: 14px; font-weight: 600; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.done-toast-mins { font-size: 12px; color: var(--fg2); margin-top: 2px; }
+@keyframes wtToast { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
 
 .undo-toast {
   position: fixed;
@@ -1013,20 +1088,103 @@ a { color: inherit; text-decoration: none; }
 .undo-content {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   padding: 12px 16px;
 }
+.undo-label { flex: 1; font-size: 14px; color: var(--bg); }
+/* Task name in undo toast uses Instrument Serif italic */
+.undo-task-serif {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+}
 #undo-msg { font-size: 14px; color: var(--bg); }
-.undo-action-btn { font-size: 14px; font-weight: 700; color: var(--accent); }
+.undo-action-btn { font-size: 14px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
 .undo-bar {
   height: 3px;
   background: var(--accent);
   transform-origin: left;
-  animation: undo-shrink 3s linear forwards;
+  animation: undo-shrink 4.5s linear forwards;
 }
 @keyframes undo-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 @keyframes toastInY { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── Color picker (add task sheet) ────────────────────────── */
+.color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.color-swatch {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2.5px solid transparent;
+  cursor: pointer;
+  transition: transform .12s, border-color .12s;
+  flex-shrink: 0;
+  outline: none;
+}
+.color-swatch:hover { transform: scale(1.12); }
+.color-swatch.selected {
+  border-color: var(--fg);
+  box-shadow: 0 0 0 2px var(--bg-card) inset;
+}
+
+/* ── Duration chips (add task sheet) ──────────────────────── */
+.duration-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.duration-chip {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--bar-border);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg2);
+  background: transparent;
+  transition: border-color .12s, color .12s, background .12s;
+}
+.duration-chip:hover { border-color: var(--fg2); color: var(--fg); }
+.duration-chip.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* ── Theme card dot (replaces circle swatch) ───────────────── */
+.theme-card-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Swipe-to-delete ───────────────────────────────────────── */
+.task-swipe-wrap {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.task-swipe-delete-bg {
+  position: absolute;
+  inset: 0;
+  background: #E04444;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 20px;
+  color: #fff;
+  border-radius: 14px;
+  opacity: 0;
+  transition: opacity .12s;
+}
+.task-swipe-delete-bg.visible { opacity: 1; }
+.task-swipe-delete-bg .glyph { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ── Glyph base ────────────────────────────────────────────── */
 .glyph {

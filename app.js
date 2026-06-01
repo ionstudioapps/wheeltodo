@@ -2,11 +2,12 @@
 (function () {
 
   // ── Constants ──────────────────────────────────────────────
-  const DB_NAME    = 'wheelTodoDB';
-  const DB_VER     = 1;
-  const STORE      = 'days';
-  const MILESTONE  = 5;   // tasks per milestone arc segment
-  const SPIN_DUR   = 2900; // ms
+  const DB_NAME      = 'wheelTodoDB';
+  const DB_VER       = 1;
+  const STORE        = 'days';
+  const SPIN_DUR_MIN = 2900;
+  const SPIN_DUR_MAX = 3200;
+  const MILESTONES   = [3, 7, 14, 30, 60, 100];
 
   const WHEEL_COLORS = {
     'warm-start':  ['#EDB590','#E59880','#9DC4BC','#F0D29D','#ADA8CC','#D4A5C8'],
@@ -16,37 +17,41 @@
   };
 
   const THEMES = {
-    'warm-start': { label: 'Warm Start', mode: 'Light',                  bg: '#FAF7F2', swatch: '#E59880' },
-    'slow-down':  { label: 'Slow Down',  mode: 'Dark',                   bg: '#1C1828', swatch: '#ADA8CC' },
-    'light-a11y': { label: 'Light a11y', mode: 'High contrast · Light',  bg: '#FFFFFF', swatch: '#B84A30' },
-    'dark-a11y':  { label: 'Dark a11y',  mode: 'High contrast · Dark',   bg: '#0F0D18', swatch: '#F5C4A0' },
+    'warm-start': { label: 'Warm Start', mode: 'Light',                 bg: '#FAF7F2', swatch: '#E59880' },
+    'slow-down':  { label: 'Slow Down',  mode: 'Dark',                  bg: '#1C1828', swatch: '#ADA8CC' },
+    'light-a11y': { label: 'Light a11y', mode: 'High contrast · Light', bg: '#FFFFFF', swatch: '#B84A30' },
+    'dark-a11y':  { label: 'Dark a11y',  mode: 'High contrast · Dark',  bg: '#0F0D18', swatch: '#F5C4A0' },
   };
 
   // ── State ──────────────────────────────────────────────────
-  let db            = null;
-  let tasks         = [];      // today's pending tasks
-  let doneTasks     = [];      // today's completed tasks
-  let habits        = [];      // [{id,name,cat,minutes,initial}]
-  let habitLog      = {};      // {dateKey:{habitId:true}}
-  let currentTheme  = localStorage.getItem('wt_theme') || 'warm-start';
-  let habitsEnabled = localStorage.getItem('wt_habits_enabled') !== 'false';
-  let currentTab    = 'tasks';
-  let wheelRotation = 0;
-  let spinFrame     = null;
-  let pickedTask    = null;
-  let editingTaskId = null;
-  let editingHabitId = null;
-  let focusTask     = null;
-  let focusTotalSecs = 0;
-  let focusRemSecs  = 0;
-  let focusInterval = null;
-  let focusPaused   = false;
-  let undoTimeout   = null;
-  let deletedTask   = null;
+  // Unified tasks array (prototype pattern): { id, name, initial, minutes, colorIdx, done, completedAt }
+  let db              = null;
+  let tasks           = [];
+  let habits          = [];
+  let habitLog        = {};
+  let currentTheme    = localStorage.getItem('wt_theme') || 'warm-start';
+  let habitsEnabled   = localStorage.getItem('wt_habits_enabled') !== 'false';
+  let currentTab      = 'tasks';
+  let wheelRotation   = 0;
+  let spinFrame       = null;
+  let pickedTask      = null;
+  let editingTaskId   = null;
+  let editingHabitId  = null;
+  let focusTask       = null;
+  let focusTotalSecs  = 0;
+  let focusRemSecs    = 0;
+  let focusInterval   = null;
+  let focusPaused     = false;
+  let undoTimeout     = null;
+  let doneToastTimer  = null;
+  let deletedTask     = null;
   let deletedTaskIndex = 0;
-  let _heatmapCache = {};
+  let cachedStreak    = 0;
+  let _heatmapCache   = {};
   let wateringTimeout = null;
-  let dragSrc       = null;
+  let dragSrc         = null;
+  let selectedColorIdx = 0;
+  let selectedMins     = 25;
 
   // ── Helpers ────────────────────────────────────────────────
   function localDayKey(date) {
@@ -66,10 +71,10 @@
   }
 
   function slicePath(cx, R, i, n) {
-    const sd  = 360 / n;
-    const s   = polar(cx, R, i * sd);
-    const e   = polar(cx, R, (i + 1) * sd);
-    const lg  = sd > 180 ? 1 : 0;
+    const sd = 360 / n;
+    const s  = polar(cx, R, i * sd);
+    const e  = polar(cx, R, (i + 1) * sd);
+    const lg = sd > 180 ? 1 : 0;
     return `M ${cx} ${cx} L ${s.x.toFixed(3)} ${s.y.toFixed(3)} A ${R} ${R} 0 ${lg} 1 ${e.x.toFixed(3)} ${e.y.toFixed(3)} Z`;
   }
 
@@ -88,9 +93,7 @@
   }
 
   function getInitial(name) { return (name || '?').trim()[0].toUpperCase(); }
-
   function getWheelColors() { return WHEEL_COLORS[currentTheme] || WHEEL_COLORS['warm-start']; }
-
   function escHtml(str) {
     return String(str)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -106,9 +109,7 @@
       const req = indexedDB.open(DB_NAME, DB_VER);
       req.onupgradeneeded = e => {
         const d = e.target.result;
-        if (!d.objectStoreNames.contains(STORE)) {
-          d.createObjectStore(STORE, { keyPath: 'dateKey' });
-        }
+        if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: 'dateKey' });
       };
       req.onsuccess = e => resolve(e.target.result);
       req.onerror   = e => reject(e.target.error);
@@ -140,24 +141,31 @@
   }
 
   async function saveTodayTasks() {
-    await dbPut({ dateKey: localDayKey(), tasks, doneTasks });
+    await dbPut({ dateKey: localDayKey(), tasks });
   }
 
   async function loadTodayTasks() {
     const rec = await dbGet(localDayKey());
-    tasks     = rec ? (rec.tasks || [])     : [];
-    doneTasks = rec ? (rec.doneTasks || []) : [];
+    if (!rec) { tasks = []; return; }
+    // Handle both old format (tasks+doneTasks separate) and new unified format
+    if (rec.tasks && rec.tasks.length > 0 && typeof rec.tasks[0].done === 'boolean') {
+      tasks = rec.tasks;
+    } else {
+      const active = (rec.tasks     || []).map(t => ({ ...t, done: false }));
+      const done   = (rec.doneTasks || []).map(t => ({ ...t, done: true }));
+      tasks = [...active, ...done];
+    }
   }
 
   // ── Habits (localStorage) ───────────────────────────────────
   function loadHabits() {
     try {
-      habits    = JSON.parse(localStorage.getItem('wt_habits')     || '[]');
-      habitLog  = JSON.parse(localStorage.getItem('wt_habit_log')  || '{}');
+      habits   = JSON.parse(localStorage.getItem('wt_habits')    || '[]');
+      habitLog = JSON.parse(localStorage.getItem('wt_habit_log') || '{}');
     } catch (_) { habits = []; habitLog = {}; }
   }
 
-  function saveHabits()   { localStorage.setItem('wt_habits', JSON.stringify(habits)); }
+  function saveHabits()   { localStorage.setItem('wt_habits',    JSON.stringify(habits)); }
   function saveHabitLog() { localStorage.setItem('wt_habit_log', JSON.stringify(habitLog)); }
 
   function isHabitDoneToday(id) {
@@ -181,8 +189,13 @@
   async function calcOverallStreak() {
     const all = await dbGetAll();
     const done = {};
-    all.forEach(r => { if (r.doneTasks && r.doneTasks.length > 0) done[r.dateKey] = true; });
-    if (doneTasks.length > 0) done[localDayKey()] = true;
+    all.forEach(r => {
+      let hasDone = false;
+      if (r.tasks)     hasDone = r.tasks.some(t => t.done);
+      if (!hasDone && r.doneTasks) hasDone = r.doneTasks.length > 0;
+      if (hasDone) done[r.dateKey] = true;
+    });
+    if (tasks.some(t => t.done)) done[localDayKey()] = true;
     let streak = 0;
     const today = new Date();
     for (let i = 0; i < 365; i++) {
@@ -197,8 +210,11 @@
   async function loadHeatmapData() {
     const all = await dbGetAll();
     _heatmapCache = {};
-    all.forEach(r => { if (r.doneTasks) _heatmapCache[r.dateKey] = r.doneTasks.length; });
-    _heatmapCache[localDayKey()] = doneTasks.length;
+    all.forEach(r => {
+      if (r.tasks)     _heatmapCache[r.dateKey] = r.tasks.filter(t => t.done).length;
+      else if (r.doneTasks) _heatmapCache[r.dateKey] = r.doneTasks.length;
+    });
+    _heatmapCache[localDayKey()] = tasks.filter(t => t.done).length;
   }
 
   // ── Theme ──────────────────────────────────────────────────
@@ -217,18 +233,20 @@
       Object.entries(THEMES).forEach(([key, t]) => {
         const btn = document.createElement('button');
         btn.className = 'theme-card' + (key === currentTheme ? ' selected' : '');
-        btn.style.background = t.bg;
-        btn.style.color      = t.mode.toLowerCase().includes('dark') ? '#fff' : '#1a1a1a';
         btn.innerHTML = `
-          <div class="theme-card-swatch" style="background:${t.swatch}"></div>
+          <div class="theme-card-dot" style="background:${t.bg}">
+            <div style="position:absolute;right:-4px;top:-4px;width:14px;height:14px;border-radius:50%;background:${t.swatch}"></div>
+          </div>
           <div class="theme-card-info">
             <div class="theme-card-name">${escHtml(t.label)}</div>
             <div class="theme-card-mode">${escHtml(t.mode)}</div>
-          </div>`;
+          </div>
+          ${key === currentTheme ? '<svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-11"/></svg>' : ''}`;
         btn.addEventListener('click', () => applyTheme(key));
         grid.appendChild(btn);
       });
     });
+    renderColorPicker();
   }
 
   // ── Tab switching ──────────────────────────────────────────
@@ -245,8 +263,15 @@
   }
 
   // ── SVG Wheel ──────────────────────────────────────────────
-  const SVG_NS = 'http://www.w3.org/2000/svg';
-  const CX = 150, WHEEL_R = 146, HUB_R = 42, LABEL_R_RATIO = 0.65;
+  const SVG_NS  = 'http://www.w3.org/2000/svg';
+  const CX      = 150;
+  const SLICE_R = 142;  // R - 8  (prototype: size/2 - 8)
+  const ARC_R   = 148;  // R - 2  (prototype: R - 2)
+  const HUB_R   = 84;   // prototype: Math.round(300 * 0.28)
+  const LABEL_R = 105;  // R * 0.7 = 150 * 0.7
+
+  function getActiveTasks() { return tasks.filter(t => !t.done); }
+  function getDoneTasks()   { return tasks.filter(t => t.done);  }
 
   function renderWheel() {
     const disc   = $('wheel-disc');
@@ -254,26 +279,26 @@
     if (!disc || !labels) return;
     disc.innerHTML   = '';
     labels.innerHTML = '';
-    if (tasks.length === 0) return;
+    const active = getActiveTasks();
+    if (active.length === 0) return;
 
-    const n      = tasks.length;
+    const n      = active.length;
     const colors = getWheelColors();
 
-    tasks.forEach((task, i) => {
+    active.forEach((task, i) => {
       const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d', slicePath(CX, WHEEL_R, i, n));
-      path.setAttribute('fill', colors[i % colors.length]);
+      path.setAttribute('d', slicePath(CX, SLICE_R, i, n));
+      path.setAttribute('fill', colors[(task.colorIdx ?? i) % colors.length]);
       path.style.cursor = 'pointer';
-      path.addEventListener('click', () => openEditTask(task.id));
+      path.addEventListener('click', () => openPickedSheet(task));
       disc.appendChild(path);
     });
 
-    // Hub cutout
     const hub = document.createElementNS(SVG_NS, 'circle');
-    hub.setAttribute('cx', CX);
-    hub.setAttribute('cy', CX);
-    hub.setAttribute('r',  HUB_R);
-    hub.setAttribute('fill', 'var(--bg)');
+    hub.setAttribute('cx',   CX);
+    hub.setAttribute('cy',   CX);
+    hub.setAttribute('r',    HUB_R);
+    hub.setAttribute('fill', 'var(--bg-card)');
     disc.appendChild(hub);
 
     disc.setAttribute('transform', `rotate(${wheelRotation}, ${CX}, ${CX})`);
@@ -284,20 +309,19 @@
 
   function updateWheelLabels() {
     const labels = $('wheel-labels');
-    if (!labels || tasks.length === 0) return;
+    if (!labels) return;
+    const active = getActiveTasks();
+    if (active.length === 0) { labels.innerHTML = ''; return; }
     labels.innerHTML = '';
-    const n        = tasks.length;
+    const n        = active.length;
     const sliceDeg = 360 / n;
-    const labelR   = WHEEL_R * LABEL_R_RATIO;
-
-    tasks.forEach((task, i) => {
+    active.forEach((task, i) => {
       const angle  = wheelRotation + (i + 0.5) * sliceDeg;
-      const { x, y } = polar(CX, labelR, angle);
+      const { x, y } = polar(CX, LABEL_R, angle);
       const text = document.createElementNS(SVG_NS, 'text');
-      text.setAttribute('x', x.toFixed(2));
-      text.setAttribute('y', y.toFixed(2));
+      text.setAttribute('x',     x.toFixed(2));
+      text.setAttribute('y',     y.toFixed(2));
       text.setAttribute('class', 'wheel-label-text');
-      text.setAttribute('fill', '#FFFFFF');
       text.textContent = task.initial || getInitial(task.name);
       labels.appendChild(text);
     });
@@ -306,23 +330,28 @@
   function updateArcProgress() {
     const arcEl = $('arc-progress');
     if (!arcEl) return;
-    const total = doneTasks.length;
-    if (total === 0) { arcEl.setAttribute('d', ''); return; }
-    const pct  = MILESTONE > 0 ? (total % MILESTONE) / MILESTONE : 0;
-    const eff  = pct === 0 ? 1 : pct;  // full circle when at milestone exactly
-    const end  = polar(CX, WHEEL_R, eff * 360);
-    const lg   = eff > 0.5 ? 1 : 0;
-    arcEl.setAttribute('d',
-      `M ${CX} ${CX - WHEEL_R} A ${WHEEL_R} ${WHEEL_R} 0 ${lg} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`);
+    if (cachedStreak <= 0) { arcEl.setAttribute('d', ''); return; }
+    const nextM = MILESTONES.find(m => m > cachedStreak) ?? 100;
+    const prevM = [...MILESTONES].reverse().find(m => m <= cachedStreak) ?? 0;
+    const pct   = (nextM === prevM) ? 1
+                : Math.max(0, Math.min(1, (cachedStreak - prevM) / (nextM - prevM)));
+    if (pct <= 0) { arcEl.setAttribute('d', ''); return; }
+    const eff = Math.min(pct, 0.9999);
+    const end = polar(CX, ARC_R, eff * 360);
+    const lg  = eff > 0.5 ? 1 : 0;
+    arcEl.setAttribute('d', `M ${CX} ${CX - ARC_R} A ${ARC_R} ${ARC_R} 0 ${lg} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`);
   }
 
   function updateHubText() {
-    const el = $('hub-num');
-    if (el) el.textContent = `${doneTasks.length}/${tasks.length + doneTasks.length}`;
+    const el   = $('hub-num');
+    const done = getDoneTasks().length;
+    if (el) el.textContent = `${done}/${tasks.length}`;
   }
 
   function updateWheelVisibility() {
-    const empty  = tasks.length === 0;
+    const active = getActiveTasks();
+    const done   = getDoneTasks();
+    const empty  = active.length === 0;
     $('empty-state').hidden  = !empty;
     $('wheel-wrap').hidden   = empty;
     $('spin-btn').hidden     = empty;
@@ -330,57 +359,59 @@
     $('add-first-btn').hidden  = !empty;
     $('rest-day-link').hidden  = !empty;
     $('today-tasks').hidden  = empty;
-    $('done-section').hidden = doneTasks.length === 0;
+    $('done-section').hidden = done.length === 0;
     const lbl = $('today-count-label');
-    if (lbl) lbl.textContent = `Today · ${tasks.length} task${tasks.length !== 1 ? 's' : ''}`;
+    if (lbl) lbl.textContent = `Today · ${active.length} task${active.length !== 1 ? 's' : ''}`;
   }
 
-  // ── Spin animation ─────────────────────────────────────────
+  // ── Spin — deterministic target-based ─────────────────────
   function spin() {
-    if (tasks.length === 0 || spinFrame) return;
-    const n        = tasks.length;
-    const extra    = 5 + Math.floor(Math.random() * 3);  // 5-7 full turns
-    const offset   = Math.random() * 360;
-    const total    = extra * 360 + offset;
-    const startRot = wheelRotation;
-    const startT   = performance.now();
+    const active = getActiveTasks();
+    if (active.length === 0 || spinFrame) return;
+    const n  = active.length;
+    const sd = 360 / n;
+
+    // Pick target slice first, then compute exact rotation delta to land on it
+    const target     = Math.floor(Math.random() * n);
+    const targetNorm = target * sd + sd / 2;
+    const wantMod    = (360 - targetNorm + 360) % 360;
+    const currentMod = ((wheelRotation % 360) + 360) % 360;
+    let delta = wantMod - currentMod;
+    if (delta < 0) delta += 360;
+    const toVal = wheelRotation + 5 * 360 + delta;
+
+    const startRot   = wheelRotation;
+    const totalDelta = toVal - startRot;
+    const dur        = SPIN_DUR_MIN + Math.random() * (SPIN_DUR_MAX - SPIN_DUR_MIN);
+    const startT     = performance.now();
 
     function frame(now) {
-      const t      = Math.min((now - startT) / SPIN_DUR, 1);
-      const eased  = easeOutCubic(t);
-      wheelRotation = startRot + total * eased;
-      const disc   = $('wheel-disc');
+      const t     = Math.min((now - startT) / dur, 1);
+      const eased = easeOutCubic(t);
+      wheelRotation = startRot + totalDelta * eased;
+      const disc = $('wheel-disc');
       if (disc) disc.setAttribute('transform', `rotate(${wheelRotation}, ${CX}, ${CX})`);
       updateWheelLabels();
       if (t < 1) { spinFrame = requestAnimationFrame(frame); return; }
       spinFrame = null;
-      wheelRotation = ((wheelRotation % 360) + 360) % 360;
-      if (disc) disc.setAttribute('transform', `rotate(${wheelRotation}, ${CX}, ${CX})`);
-      updateWheelLabels();
-      onSpinComplete();
+      pickedTask = active[target];
+      openPickedSheet(pickedTask);
     }
     spinFrame = requestAnimationFrame(frame);
-  }
-
-  function onSpinComplete() {
-    const n        = tasks.length;
-    const sliceDeg = 360 / n;
-    // pointer at top = 0°; find which unrotated slice covers that angle
-    const ptr      = ((0 - wheelRotation) % 360 + 360) % 360;
-    const idx      = Math.floor(ptr / sliceDeg) % n;
-    pickedTask     = tasks[idx];
-    openPickedSheet(pickedTask);
   }
 
   // ── Picked sheet ───────────────────────────────────────────
   function openPickedSheet(task) {
     if (!task) return;
-    const i     = tasks.indexOf(task);
-    const color = getWheelColors()[i % getWheelColors().length];
-    $('picked-badge').textContent       = task.initial || getInitial(task.name);
-    $('picked-badge').style.background  = color;
-    $('picked-name').textContent        = task.name;
-    $('picked-meta').textContent        = task.minutes ? fmtMins(task.minutes) : '';
+    pickedTask = task;
+    const active = getActiveTasks();
+    const i      = active.indexOf(task);
+    const colors = getWheelColors();
+    const color  = colors[(task.colorIdx ?? (i >= 0 ? i : 0)) % colors.length];
+    $('picked-badge').textContent      = task.initial || getInitial(task.name);
+    $('picked-badge').style.background = color;
+    $('picked-name').textContent       = task.name;
+    $('picked-meta').textContent       = task.minutes ? fmtMins(task.minutes) : '';
     openSheet('sheet-picked');
   }
 
@@ -389,10 +420,9 @@
     const el = $(id);
     if (!el) return;
     el.hidden = false;
-    // Re-trigger entry animation
     const body = el.querySelector('.sheet-body');
     if (body) { body.style.animation = 'none'; body.offsetHeight; body.style.animation = ''; }
-    const bd = el.querySelector('.sheet-backdrop');
+    const bd   = el.querySelector('.sheet-backdrop');
     if (bd)   { bd.style.animation   = 'none'; bd.offsetHeight;   bd.style.animation   = ''; }
   }
 
@@ -406,48 +436,185 @@
     list.innerHTML     = '';
     doneList.innerHTML = '';
     const colors = getWheelColors();
-    tasks.forEach((t, i)     => list.appendChild(makeTaskItem(t, colors[i % colors.length], false)));
-    doneTasks.forEach((t, i) => doneList.appendChild(makeTaskItem(t, colors[i % colors.length], true)));
+    const active = getActiveTasks();
+    const done   = getDoneTasks();
+    active.forEach((t, i) => list.appendChild(makeTaskItem(t, colors[(t.colorIdx ?? i) % colors.length], false)));
+    done.forEach((t, i)   => doneList.appendChild(makeTaskItem(t, colors[(t.colorIdx ?? i) % colors.length], true)));
     updateWheelVisibility();
   }
 
-  function makeTaskItem(task, color, done) {
+  function makeTaskItem(task, color, isDone) {
     const li = document.createElement('li');
-    li.className   = 'task-item';
-    li.dataset.id  = task.id;
-    li.innerHTML   = `
+    li.className  = 'task-item';
+    li.dataset.id = task.id;
+    if (isDone) li.classList.add('task-item-done');
+    li.innerHTML = `
       <div class="task-badge" style="background:${color}">${escHtml(task.initial || getInitial(task.name))}</div>
       <div class="task-info">
-        <div class="task-name">${escHtml(task.name)}</div>
+        <div class="task-name${isDone ? ' task-name-done' : ''}">${escHtml(task.name)}</div>
         ${task.minutes ? `<div class="task-meta">${fmtMins(task.minutes)}</div>` : ''}
       </div>
-      ${!done ? `<button class="task-drag-btn" aria-label="Reorder">
-        <svg style="width:14px;height:14px" viewBox="0 0 24 24">
-          <circle cx="9"  cy="7"  r="1.4" fill="var(--fg3)"/>
-          <circle cx="9"  cy="12" r="1.4" fill="var(--fg3)"/>
-          <circle cx="9"  cy="17" r="1.4" fill="var(--fg3)"/>
-          <circle cx="15" cy="7"  r="1.4" fill="var(--fg3)"/>
-          <circle cx="15" cy="12" r="1.4" fill="var(--fg3)"/>
-          <circle cx="15" cy="17" r="1.4" fill="var(--fg3)"/>
-        </svg>
-      </button>` : ''}
-      <button class="task-action-btn ${done ? 'checked' : ''}" aria-label="${done ? 'Done' : 'Mark done'}">
+      ${!isDone ? `
+        <button class="task-edit-btn" aria-label="Edit task">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/>
+          </svg>
+        </button>
+        <button class="task-drag-btn" aria-label="Reorder">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px">
+            <circle cx="9"  cy="7"  r="1.4" fill="var(--fg3)"/>
+            <circle cx="9"  cy="12" r="1.4" fill="var(--fg3)"/>
+            <circle cx="9"  cy="17" r="1.4" fill="var(--fg3)"/>
+            <circle cx="15" cy="7"  r="1.4" fill="var(--fg3)"/>
+            <circle cx="15" cy="12" r="1.4" fill="var(--fg3)"/>
+            <circle cx="15" cy="17" r="1.4" fill="var(--fg3)"/>
+          </svg>
+        </button>
+      ` : ''}
+      <button class="task-action-btn${isDone ? ' checked' : ''}" aria-label="${isDone ? 'Done' : 'Mark done'}">
         <svg class="glyph" viewBox="0 0 24 24"><path d="m5 12 5 5 9-11"/></svg>
       </button>`;
 
-    if (!done) {
-      li.querySelector('.task-action-btn').addEventListener('click', () => completeTask(task.id));
+    if (!isDone) {
+      li.querySelector('.task-action-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        completeTask(task.id);
+      });
+      li.querySelector('.task-edit-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        openEditTask(task.id);
+      });
       li.addEventListener('click', e => {
-        if (!e.target.closest('.task-action-btn') && !e.target.closest('.task-drag-btn')) {
-          openEditTask(task.id);
+        if (!e.target.closest('.task-action-btn') &&
+            !e.target.closest('.task-drag-btn') &&
+            !e.target.closest('.task-edit-btn')) {
+          openPickedSheet(task);
         }
       });
+      attachSwipeDelete(li, () => deleteTask(task.id));
     }
     return li;
   }
 
-  async function addTask(name, minutes) {
-    const task = { id: uid(), name, initial: getInitial(name), minutes: parseInt(minutes) || 25 };
+  // ── Swipe-to-delete (pointer events) ──────────────────────
+  function attachSwipeDelete(el, onDelete) {
+    const COMMIT = 64;
+    const REVEAL = 88;
+    let startX, startY, moved, horizontal, offset = 0, removing = false, pointerId = null;
+
+    el.addEventListener('pointerdown', e => {
+      startX     = e.clientX;
+      startY     = e.clientY;
+      moved      = false;
+      horizontal = null;
+      offset     = 0;
+      removing   = false;
+      pointerId  = e.pointerId;
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+
+    el.addEventListener('pointermove', e => {
+      if (startX == null || e.pointerId !== pointerId) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!moved && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        moved      = true;
+        horizontal = Math.abs(dx) > Math.abs(dy);
+      }
+      if (horizontal && dx < 0) {
+        offset = Math.max(dx, -REVEAL - 20);
+        el.style.transform  = `translateX(${offset}px)`;
+        el.style.transition = 'none';
+      }
+    });
+
+    const finish = () => {
+      if (startX == null) return;
+      if (horizontal && offset <= -COMMIT && !removing) {
+        removing = true;
+        el.style.transition = 'transform 0.2s ease, opacity 0.18s ease, max-height 0.22s ease';
+        el.style.transform  = 'translateX(-400px)';
+        el.style.opacity    = '0';
+        setTimeout(() => onDelete(), 200);
+      } else {
+        el.style.transition = 'transform 0.22s cubic-bezier(0.2,0.8,0.2,1)';
+        el.style.transform  = '';
+        setTimeout(() => { el.style.transition = ''; }, 240);
+      }
+      startX     = null;
+      offset     = 0;
+      horizontal = null;
+    };
+
+    el.addEventListener('pointerup',     finish);
+    el.addEventListener('pointercancel', finish);
+  }
+
+  // ── Add/Edit task sheet ────────────────────────────────────
+  function openAddTask() {
+    editingTaskId    = null;
+    selectedColorIdx = getActiveTasks().length % getWheelColors().length;
+    selectedMins     = 25;
+    $('add-sheet-title').textContent     = 'New task';
+    $('add-task-name').value             = '';
+    $('add-task-submit-btn').textContent = 'Add to wheel';
+    $('delete-task-btn').hidden          = true;
+    renderColorPicker();
+    syncDurationChips(selectedMins);
+    openSheet('sheet-add');
+    setTimeout(() => $('add-task-name').focus(), 280);
+  }
+
+  function openEditTask(id) {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+    editingTaskId    = id;
+    selectedColorIdx = task.colorIdx ?? 0;
+    selectedMins     = task.minutes || 25;
+    $('add-sheet-title').textContent     = 'Edit task';
+    $('add-task-name').value             = task.name;
+    $('add-task-submit-btn').textContent = 'Save';
+    $('delete-task-btn').hidden          = false;
+    renderColorPicker();
+    syncDurationChips(selectedMins);
+    openSheet('sheet-add');
+    setTimeout(() => $('add-task-name').focus(), 280);
+  }
+
+  function renderColorPicker() {
+    const picker = $('add-task-color-picker');
+    if (!picker) return;
+    const colors = getWheelColors();
+    picker.innerHTML = '';
+    colors.forEach((color, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'color-swatch' + (i === selectedColorIdx ? ' selected' : '');
+      btn.style.background = color;
+      btn.setAttribute('aria-label', `Color ${i + 1}`);
+      btn.addEventListener('click', () => {
+        selectedColorIdx = i;
+        picker.querySelectorAll('.color-swatch').forEach((s, j) => s.classList.toggle('selected', j === i));
+      });
+      picker.appendChild(btn);
+    });
+  }
+
+  function syncDurationChips(activeMins) {
+    $$('#add-task-duration-chips .duration-chip').forEach(chip => {
+      chip.classList.toggle('active', parseInt(chip.dataset.mins) === activeMins);
+    });
+  }
+
+  async function addTask(name) {
+    const task = {
+      id:       uid(),
+      name,
+      initial:  getInitial(name),
+      minutes:  selectedMins,
+      colorIdx: selectedColorIdx,
+      done:     false,
+    };
     tasks.push(task);
     await saveTodayTasks();
     renderTaskList();
@@ -456,12 +623,13 @@
     closeSheet('sheet-add');
   }
 
-  async function updateTask(id, name, minutes) {
+  async function updateTask(id, name) {
     const task = tasks.find(t => t.id === id);
     if (task) {
-      task.name    = name;
-      task.initial = getInitial(name);
-      task.minutes = parseInt(minutes) || 25;
+      task.name     = name;
+      task.initial  = getInitial(name);
+      task.minutes  = selectedMins;
+      task.colorIdx = selectedColorIdx;
       await saveTodayTasks();
       renderTaskList();
       renderWheel();
@@ -470,7 +638,7 @@
   }
 
   async function deleteTask(id) {
-    const idx = tasks.findIndex(t => t.id === id);
+    const idx = tasks.findIndex(t => t.id === id && !t.done);
     if (idx === -1) return;
     deletedTask      = tasks[idx];
     deletedTaskIndex = idx;
@@ -479,24 +647,23 @@
     renderTaskList();
     renderWheel();
     closeSheet('sheet-add');
-    showUndoToast('Task removed');
+    showUndoToast(deletedTask);
   }
 
   async function completeTask(id) {
-    const idx = tasks.findIndex(t => t.id === id);
-    if (idx === -1) return;
-    const task = tasks.splice(idx, 1)[0];
+    const task = tasks.find(t => t.id === id && !t.done);
+    if (!task) return;
+    task.done        = true;
     task.completedAt = Date.now();
-    doneTasks.push(task);
-    _heatmapCache[localDayKey()] = doneTasks.length;
+    _heatmapCache[localDayKey()] = getDoneTasks().length;
     await saveTodayTasks();
     renderTaskList();
     renderWheel();
     updateHubText();
-    updateArcProgress();
-    updateStreak();
+    await updateStreak();
     showWateringMoment(task.name);
-    showDoneToast('✓ ' + task.name);
+    showDoneToast(task);
+    closeSheet('sheet-picked');
   }
 
   // ── Drag reorder ───────────────────────────────────────────
@@ -511,7 +678,7 @@
       e.dataTransfer.effectAllowed = 'move';
       requestAnimationFrame(() => { if (li) li.style.opacity = '.4'; });
     });
-    list.addEventListener('dragend', e => {
+    list.addEventListener('dragend', () => {
       if (dragSrc) dragSrc.style.opacity = '';
       dragSrc = null;
     });
@@ -528,7 +695,10 @@
     list.addEventListener('drop', async e => {
       e.preventDefault();
       const all    = [...list.querySelectorAll('li.task-item')];
-      tasks = all.map(li => tasks.find(t => t.id === li.dataset.id)).filter(Boolean);
+      const active = getActiveTasks();
+      const reordered = all.map(li => active.find(t => t.id === li.dataset.id)).filter(Boolean);
+      const done   = getDoneTasks();
+      tasks = [...reordered, ...done];
       await saveTodayTasks();
       renderWheel();
     });
@@ -546,35 +716,15 @@
     attachDrag();
   }
 
-  // ── Task sheet open ────────────────────────────────────────
-  function openAddTask() {
-    editingTaskId = null;
-    $('add-sheet-title').textContent    = 'New task';
-    $('add-task-name').value            = '';
-    $('add-task-mins').value            = '25';
-    $('add-task-submit-btn').textContent = 'Add task';
-    $('delete-task-btn').hidden         = true;
-    openSheet('sheet-add');
-    setTimeout(() => $('add-task-name').focus(), 280);
-  }
-
-  function openEditTask(id) {
-    const task = tasks.find(t => t.id === id);
-    if (!task) return;
-    editingTaskId = id;
-    $('add-sheet-title').textContent    = 'Edit task';
-    $('add-task-name').value            = task.name;
-    $('add-task-mins').value            = task.minutes || 25;
-    $('add-task-submit-btn').textContent = 'Save';
-    $('delete-task-btn').hidden         = false;
-    openSheet('sheet-add');
-    setTimeout(() => $('add-task-name').focus(), 280);
-  }
-
-  // ── Undo / Toasts ──────────────────────────────────────────
-  function showUndoToast(msg) {
-    $('undo-msg').textContent    = msg;
-    $('undo-toast').hidden       = false;
+  // ── Toasts ─────────────────────────────────────────────────
+  function showUndoToast(task) {
+    const nameEl = $('undo-task-name');
+    if (nameEl) nameEl.textContent = task.name;
+    const toast = $('undo-toast');
+    toast.hidden = false;
+    toast.style.animation = 'none';
+    toast.offsetHeight;
+    toast.style.animation = '';
     const bar = $('undo-bar');
     bar.style.animation = 'none';
     bar.offsetHeight;
@@ -583,32 +733,42 @@
     undoTimeout = setTimeout(() => {
       $('undo-toast').hidden = true;
       deletedTask = null;
-    }, 3000);
+    }, 4500);
   }
 
-  function showDoneToast(msg) {
-    const el = $('done-toast');
-    el.textContent = msg;
+  function showDoneToast(task) {
+    const el     = $('done-toast');
+    const nameEl = $('done-toast-name');
+    const minsEl = $('done-toast-mins');
+    if (nameEl) nameEl.textContent = `Nice. ${task.name} is done.`;
+    if (minsEl) minsEl.textContent = task.minutes
+      ? `${task.minutes} min focused · tap the wheel for what's next`
+      : 'tap the wheel for what\'s next';
     el.hidden = false;
-    setTimeout(() => { el.hidden = true; }, 2000);
+    el.style.animation = 'none';
+    el.offsetHeight;
+    el.style.animation = '';
+    clearTimeout(doneToastTimer);
+    doneToastTimer = setTimeout(() => { el.hidden = true; }, 3000);
   }
 
-  // ── Streak ────────────────────────────────────────────────
+  // ── Streak ─────────────────────────────────────────────────
   async function updateStreak() {
-    const streak = await calcOverallStreak();
+    cachedStreak = await calcOverallStreak();
     const cnt = $('streak-count');
-    if (cnt) cnt.textContent = streak;
+    if (cnt) cnt.textContent = cachedStreak;
     const meta = $('streak-to-next');
     if (meta) {
-      const next = (Math.floor(streak / 7) + 1) * 7;
-      meta.textContent = `${streak}-day streak · ${next - streak} to ${next}`;
+      const nextM = MILESTONES.find(m => m > cachedStreak) ?? 100;
+      meta.textContent = `${cachedStreak}-day streak · to ${nextM}`;
     }
+    updateArcProgress();
   }
 
   // ── Watering moment ────────────────────────────────────────
   function showWateringMoment(name) {
-    $('watering-sub').textContent    = name || '';
-    $('watering-moment').hidden      = false;
+    $('watering-sub').textContent = name || '';
+    $('watering-moment').hidden   = false;
     clearTimeout(wateringTimeout);
     wateringTimeout = setTimeout(() => { $('watering-moment').hidden = true; }, 2200);
   }
@@ -621,12 +781,13 @@
     focusRemSecs   = focusTotalSecs;
     focusPaused    = false;
 
-    const i     = tasks.indexOf(task);
-    const color = getWheelColors()[i >= 0 ? i % getWheelColors().length : 0];
-    $('focus-badge').textContent      = task.initial || getInitial(task.name);
-    $('focus-badge').style.background = color;
-    $('focus-task-name').textContent  = task.name;
-    $('focus-time').textContent       = fmtTime(focusRemSecs);
+    const active = getActiveTasks();
+    const i      = active.indexOf(task);
+    const color  = getWheelColors()[(task.colorIdx ?? (i >= 0 ? i : 0)) % getWheelColors().length];
+    $('focus-badge').textContent        = task.initial || getInitial(task.name);
+    $('focus-badge').style.background   = color;
+    $('focus-task-name').textContent    = task.name;
+    $('focus-time').textContent         = fmtTime(focusRemSecs);
     $('focus-status-label').textContent = 'remaining';
     updateFocusRing();
 
@@ -651,7 +812,7 @@
   function updateFocusRing() {
     const ring = $('focus-ring');
     if (!ring) return;
-    const circ = 691.15;  // 2π × 110
+    const circ = 703.72;  // 2π × 112
     const pct  = focusTotalSecs > 0 ? focusRemSecs / focusTotalSecs : 0;
     ring.style.strokeDashoffset = String(circ * (1 - pct));
   }
@@ -677,7 +838,7 @@
       : '<path d="M8 5v14M16 5v14"/>';
   }
 
-  // ── Habits tab ────────────────────────────────────────────
+  // ── Habits tab ─────────────────────────────────────────────
   function renderHabitsTab() {
     renderHeatmap($('habits-heatmap'), 14);
     renderHabitStats();
@@ -693,7 +854,6 @@
     const DAYS  = 7 * weeks;
     const start = new Date(today);
     start.setDate(today.getDate() - DAYS + 1);
-
     for (let d = 0; d < DAYS; d++) {
       const date  = new Date(start);
       date.setDate(start.getDate() + d);
@@ -712,12 +872,12 @@
   function renderHabitStats() {
     const el = $('habits-stats');
     if (!el) return;
-    const doneToday  = habits.filter(h => isHabitDoneToday(h.id)).length;
-    const maxStreak  = habits.reduce((m, h) => Math.max(m, calcHabitStreak(h.id)), 0);
+    const doneToday = habits.filter(h => isHabitDoneToday(h.id)).length;
+    const maxStreak = habits.reduce((m, h) => Math.max(m, calcHabitStreak(h.id)), 0);
     el.innerHTML = `
-      <div class="stat-card"><div class="stat-value">${doneToday}/${habits.length}</div><div class="stat-label">Today</div></div>
-      <div class="stat-card"><div class="stat-value">${maxStreak}</div><div class="stat-label">Best streak</div></div>
-      <div class="stat-card"><div class="stat-value">${habits.length}</div><div class="stat-label">Habits</div></div>`;
+      <div class="stat-card"><div class="stat-value serif-italic">${maxStreak}</div><div class="stat-label">longest</div></div>
+      <div class="stat-card"><div class="stat-value serif-italic">${doneToday}/${habits.length}</div><div class="stat-label">today</div></div>
+      <div class="stat-card"><div class="stat-value serif-italic">${habits.length}</div><div class="stat-label">habits</div></div>`;
   }
 
   function renderHabitList() {
@@ -732,17 +892,25 @@
       const li     = document.createElement('li');
       li.className = 'habit-item';
       li.innerHTML = `
-        <div class="habit-badge" style="background:${color}">${escHtml(habit.initial || getInitial(habit.name))}</div>
+        <button class="habit-checkbox${done ? ' done' : ''}" style="${done ? `background:${color};border-color:${color}` : ''}" aria-label="${done ? 'Done' : 'Mark done'}">
+          ${done ? '<svg viewBox="0 0 24 24" style="width:14px;height:14px;display:block" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-11"/></svg>' : ''}
+        </button>
         <div class="habit-info">
-          <div class="habit-name">${escHtml(habit.name)}</div>
-          <div class="habit-streak">${escHtml(habit.cat)} · ${streak > 0 ? streak + '-day streak' : 'No streak yet'}</div>
+          <div class="habit-name${done ? ' done' : ''}">${escHtml(habit.name)}</div>
+          <div class="habit-cat">${escHtml(habit.cat || '')}${habit.minutes ? ` · ${habit.minutes}m` : ''}</div>
         </div>
-        <button class="habit-toggle-btn ${done ? 'done' : ''}" aria-label="${done ? 'Done' : 'Mark done'}">
-          <svg class="glyph" viewBox="0 0 24 24"><path d="m5 12 5 5 9-11"/></svg>
-        </button>`;
-      li.querySelector('.habit-toggle-btn').addEventListener('click', () => toggleHabit(habit.id));
+        <div class="habit-streak-badge">
+          <svg viewBox="0 0 24 24" style="width:12px;height:12px;display:block" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3c0 4 4 5 4 9a4 4 0 0 1-8 0c0-2 1.5-3 1.5-5C9.5 5 12 3 12 3z"/>
+          </svg>
+          <span>${streak}</span>
+        </div>`;
+      li.querySelector('.habit-checkbox').addEventListener('click', e => {
+        e.stopPropagation();
+        toggleHabit(habit.id);
+      });
       li.addEventListener('click', e => {
-        if (!e.target.closest('.habit-toggle-btn')) openEditHabit(habit.id);
+        if (!e.target.closest('.habit-checkbox')) openEditHabit(habit.id);
       });
       list.appendChild(li);
     });
@@ -812,15 +980,35 @@
   // ── You tab ───────────────────────────────────────────────
   async function renderYouTab() {
     renderThemeGrids();
-    const streak     = await calcOverallStreak();
-    const all        = await dbGetAll();
-    const totalDone  = all.reduce((s, r) => s + (r.doneTasks ? r.doneTasks.length : 0), 0) + doneTasks.length;
+    cachedStreak    = await calcOverallStreak();
+    const all       = await dbGetAll();
+    const totalDone = all.reduce((s, r) => {
+      if (r.tasks) return s + r.tasks.filter(t => t.done).length;
+      return s + (r.doneTasks ? r.doneTasks.length : 0);
+    }, 0) + getDoneTasks().length;
+
+    const avatarEl = $('you-avatar-area');
+    if (avatarEl) {
+      avatarEl.innerHTML = `
+        <div class="you-avatar">IO</div>
+        <div class="you-identity">
+          <div class="you-username">ion.maker</div>
+          <div class="you-joined">Joined April 2025</div>
+        </div>
+        <button class="you-edit-btn">Edit</button>`;
+    }
 
     const statsEl = $('you-stats');
     if (statsEl) {
       statsEl.innerHTML = `
-        <div class="stat-card"><div class="stat-value">${streak}</div><div class="stat-label">Day streak</div></div>
-        <div class="stat-card"><div class="stat-value">${totalDone}</div><div class="stat-label">Tasks done</div></div>`;
+        <div class="stat-card">
+          <div class="stat-value serif-italic">${cachedStreak}</div>
+          <div class="stat-label">day streak</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value serif-italic">${totalDone}</div>
+          <div class="stat-label">tasks done</div>
+        </div>`;
     }
     const toggle = $('habits-toggle-btn');
     if (toggle) toggle.setAttribute('aria-checked', habitsEnabled ? 'true' : 'false');
@@ -838,29 +1026,37 @@
   }
 
   async function renderHistoryStats() {
-    const streak    = await calcOverallStreak();
-    const all       = await dbGetAll();
-    const total     = all.reduce((s, r) => s + (r.doneTasks ? r.doneTasks.length : 0), 0) + doneTasks.length;
-    const active    = new Set(all.filter(r => r.doneTasks && r.doneTasks.length > 0).map(r => r.dateKey)).size;
-    const el        = $('history-stats');
+    const streak = await calcOverallStreak();
+    const all    = await dbGetAll();
+    const total  = all.reduce((s, r) => {
+      if (r.tasks) return s + r.tasks.filter(t => t.done).length;
+      return s + (r.doneTasks ? r.doneTasks.length : 0);
+    }, 0) + getDoneTasks().length;
+    const activeDays = new Set(all.filter(r => {
+      if (r.tasks) return r.tasks.some(t => t.done);
+      return r.doneTasks && r.doneTasks.length > 0;
+    }).map(r => r.dateKey)).size;
+    const el = $('history-stats');
     if (el) {
       el.innerHTML = `
-        <div class="stat-card"><div class="stat-value">${streak}</div><div class="stat-label">Streak</div></div>
-        <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">Done</div></div>
-        <div class="stat-card"><div class="stat-value">${active}</div><div class="stat-label">Active days</div></div>`;
+        <div class="stat-card"><div class="stat-value serif-italic">${streak}</div><div class="stat-label">Streak</div></div>
+        <div class="stat-card"><div class="stat-value serif-italic">${total}</div><div class="stat-label">Done</div></div>
+        <div class="stat-card"><div class="stat-value serif-italic">${activeDays}</div><div class="stat-label">Active days</div></div>`;
     }
   }
 
   async function renderHistoryLog() {
-    const log  = $('history-log');
+    const log = $('history-log');
     if (!log) return;
     log.innerHTML = '';
-    const all  = await dbGetAll();
+    const all = await dbGetAll();
     all.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
     const items = [];
-    doneTasks.forEach(t => items.push({ name: t.name, date: localDayKey() }));
-    all.forEach(r => (r.doneTasks || []).forEach(t => items.push({ name: t.name, date: r.dateKey })));
-
+    getDoneTasks().forEach(t => items.push({ name: t.name, date: localDayKey() }));
+    all.forEach(r => {
+      const done = r.tasks ? r.tasks.filter(t => t.done) : (r.doneTasks || []);
+      done.forEach(t => items.push({ name: t.name, date: r.dateKey }));
+    });
     if (items.length === 0) {
       log.innerHTML = '<li style="color:var(--fg3);font-size:13px">No tasks completed yet</li>';
       return;
@@ -878,14 +1074,17 @@
 
   // ── Profile sheet ─────────────────────────────────────────
   async function openProfileSheet() {
-    const streak    = await calcOverallStreak();
-    const all       = await dbGetAll();
-    const total     = all.reduce((s, r) => s + (r.doneTasks ? r.doneTasks.length : 0), 0) + doneTasks.length;
-    const el        = $('profile-stats');
+    const streak = await calcOverallStreak();
+    const all    = await dbGetAll();
+    const total  = all.reduce((s, r) => {
+      if (r.tasks) return s + r.tasks.filter(t => t.done).length;
+      return s + (r.doneTasks ? r.doneTasks.length : 0);
+    }, 0) + getDoneTasks().length;
+    const el = $('profile-stats');
     if (el) {
       el.innerHTML = `
-        <div class="stat-card"><div class="stat-value">${streak}</div><div class="stat-label">Day streak</div></div>
-        <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">Tasks done</div></div>`;
+        <div class="stat-card"><div class="stat-value serif-italic">${streak}</div><div class="stat-label">Day streak</div></div>
+        <div class="stat-card"><div class="stat-value serif-italic">${total}</div><div class="stat-label">Tasks done</div></div>`;
     }
     renderThemeGrids();
     openSheet('sheet-profile');
@@ -893,41 +1092,40 @@
 
   // ── Event bindings ─────────────────────────────────────────
   function bindEvents() {
-    // Tab bar
     $$('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
-    // Sheet close (backdrop & ✕ buttons)
     document.addEventListener('click', e => {
       const id = e.target.closest('[data-close]')?.dataset.close;
       if (id) closeSheet(id);
     });
 
-    // Add task
     $('add-btn').addEventListener('click', openAddTask);
     $('add-first-btn').addEventListener('click', openAddTask);
     $('add-task-inline-btn').addEventListener('click', openAddTask);
     $('add-task-dashed').addEventListener('click', openAddTask);
     $('empty-circle-btn').addEventListener('click', openAddTask);
 
-    // Add task form submit
     $('add-task-form').addEventListener('submit', async e => {
       e.preventDefault();
       const name = $('add-task-name').value.trim();
-      const mins = $('add-task-mins').value;
       if (!name) return;
-      if (editingTaskId) await updateTask(editingTaskId, name, mins);
-      else               await addTask(name, mins);
+      if (editingTaskId) await updateTask(editingTaskId, name);
+      else               await addTask(name);
     });
     $('delete-task-btn').addEventListener('click', () => { if (editingTaskId) deleteTask(editingTaskId); });
 
-    // Spin
+    $$('#add-task-duration-chips .duration-chip').forEach(chip => {
+      chip.addEventListener('click', function () {
+        selectedMins = parseInt(this.dataset.mins);
+        $$('#add-task-duration-chips .duration-chip').forEach(c => c.classList.toggle('active', c === this));
+      });
+    });
+
     $('spin-btn').addEventListener('click', spin);
 
-    // Post-spin sheet
     $('start-focus-btn').addEventListener('click', () => { if (pickedTask) startFocus(pickedTask); });
     $('respin-btn').addEventListener('click', () => { closeSheet('sheet-picked'); spin(); });
 
-    // Focus screen
     $('focus-back-btn').addEventListener('click', () => {
       clearInterval(focusInterval);
       $('focus-screen').hidden = true;
@@ -936,25 +1134,25 @@
     $('focus-pause-btn').addEventListener('click', toggleFocusPause);
     $('focus-done-btn').addEventListener('click', completeFocus);
 
-    // Watering: tap to dismiss
     $('watering-moment').addEventListener('click', () => {
       clearTimeout(wateringTimeout);
       $('watering-moment').hidden = true;
     });
 
-    // Habits tab
+    $('done-toast').addEventListener('click', () => {
+      clearTimeout(doneToastTimer);
+      $('done-toast').hidden = true;
+    });
+
     $('add-habit-btn').addEventListener('click', openAddHabit);
     $('add-habit-form').addEventListener('submit', e => { e.preventDefault(); saveHabitFromForm(); });
     $('delete-habit-btn').addEventListener('click', () => { if (editingHabitId) deleteHabit(editingHabitId); });
 
-    // Streak / history
     $('history-link').addEventListener('click', openHistorySheet);
     $('streak-btn').addEventListener('click', openHistorySheet);
 
-    // Profile
     $('avatar-btn').addEventListener('click', openProfileSheet);
 
-    // Undo
     $('undo-btn').addEventListener('click', async () => {
       if (!deletedTask) return;
       tasks.splice(deletedTaskIndex, 0, deletedTask);
@@ -966,7 +1164,6 @@
       renderWheel();
     });
 
-    // Habits toggle
     $('habits-toggle-btn').addEventListener('click', () => {
       habitsEnabled = !habitsEnabled;
       localStorage.setItem('wt_habits_enabled', String(habitsEnabled));
@@ -974,10 +1171,8 @@
       if (!habitsEnabled && currentTab === 'habits') switchTab('tasks');
     });
 
-    // Rest day
-    $('rest-day-link').addEventListener('click', () => showDoneToast('Rest day — nice.'));
+    $('rest-day-link').addEventListener('click', () => showDoneToast({ name: 'Rest day taken', minutes: 0 }));
 
-    // Escape closes sheets
     document.addEventListener('keydown', e => {
       if (e.key !== 'Escape') return;
       $$('.sheet-overlay:not([hidden])').forEach(s => { s.hidden = true; });
@@ -999,7 +1194,6 @@
     renderTaskList();
     renderWheel();
     updateHubText();
-    updateArcProgress();
     await updateStreak();
 
     const tabBtn = $('tab-habits-btn');
