@@ -1,0 +1,11 @@
+{
+  "name": "Wheel Todo",
+  "short_name": "WheelTodo",
+  "description": "Spin the wheel. Focus on what matters.",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FAF7F2",
+  "theme_color": "#FAF7F2",
+  "categories": ["productivity"]
+}

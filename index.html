@@ -7,6 +7,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#FAF7F2" id="meta-theme-color" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="WheelTodo" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -31,6 +38,9 @@
 
     <!-- TASKS TAB ─────────────────────────────────────── -->
     <section id="panel-tasks" class="tab-panel active">
+
+      <!-- Left col: wheel + controls (stacks on mobile, fixed-width on desktop) -->
+      <div class="tasks-left-col">
       <div class="hero-title">
         <div class="hero-lead" id="tasks-lead">Not sure where to start?</div>
         <div class="hero-accent" id="tasks-accent">Spin.</div>
@@ -89,6 +99,10 @@
         </div>
       </div>
 
+      </div><!-- /.tasks-left-col -->
+
+      <!-- Right col: task list (flows below wheel on mobile, beside it on desktop) -->
+      <div class="tasks-right-col">
       <!-- Task list (shown when tasks exist) -->
       <div id="today-tasks" hidden>
         <div class="section-header">
@@ -112,6 +126,8 @@
         </div>
         <ul id="done-list" class="task-list done-list" role="list"></ul>
       </div>
+      </div><!-- /.tasks-right-col -->
+
     </section>
 
     <!-- HABITS TAB ─────────────────────────────────────── -->

@@ -1199,3 +1199,192 @@ a { color: inherit; text-decoration: none; }
   position: absolute; width: 1px; height: 1px;
   overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE — tablet + desktop
+   Mobile-first base above; breakpoints add desktop layers.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Column wrappers are transparent on mobile (display:contents
+   makes children behave as direct children of the panel) */
+.tasks-left-col,
+.tasks-right-col {
+  display: contents;
+}
+
+/* ── Tablet / small desktop (≥ 768px) ───────────────────── */
+@media (min-width: 768px) {
+
+  /* ── App shell → CSS grid ────────────────────────── */
+  #app {
+    display: grid;
+    max-width: 1100px;
+    grid-template-columns: 72px 1fr;
+    grid-template-rows: 60px 1fr;
+    grid-template-areas:
+      "sidebar topbar"
+      "sidebar content";
+    overflow: hidden;
+  }
+
+  #top-bar  {
+    grid-area: topbar;
+    border-bottom: 1px solid var(--bar-border);
+    padding: 0 24px;
+    height: 60px;
+  }
+  #content  { grid-area: content; overflow: hidden; }
+
+  /* ── Sidebar nav ─────────────────────────────────── */
+  #tab-bar {
+    grid-area: sidebar;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: 72px;
+    height: 100%;
+    padding: 20px 0;
+    gap: 2px;
+    border-top: none;
+    border-right: 1px solid var(--bar-border);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .tab-btn {
+    flex-direction: column;
+    width: 100%;
+    border-radius: 0;
+    padding: 12px 0;
+    min-width: 0;
+    font-size: 9px;
+    letter-spacing: .03em;
+  }
+
+  .tab-icon { width: 20px; height: 20px; }
+
+  /* ── Tasks panel → two columns ───────────────────── */
+  #panel-tasks {
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 28px 28px 28px 24px;
+    gap: 32px;
+    overflow-y: auto;
+  }
+
+  .tasks-left-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 300px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+  }
+
+  .tasks-right-col {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    padding-top: 4px;
+  }
+
+  /* Bigger wheel */
+  .wheel-svg-container,
+  #wheel-svg {
+    width: 300px;
+    height: 300px;
+  }
+
+  /* Hero title centred in left col */
+  .tasks-left-col .hero-title { text-align: center; }
+  .tasks-left-col #wheel-area { width: 100%; }
+  .tasks-left-col #task-cta-area { width: 100%; }
+
+  /* Sheets → centred modal dialogs */
+  .sheet-overlay {
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .sheet-body {
+    border-radius: 20px;
+    max-width: 480px;
+    width: 100%;
+    max-height: 82vh;
+  }
+  .sheet-body-tall { max-height: 88vh; }
+
+  /* Habits + You panels — cap width so they don't stretch */
+  #panel-habits,
+  #panel-you {
+    padding: 28px 36px;
+  }
+  #panel-habits .tab-scroll-content,
+  #panel-you   .tab-scroll-content {
+    max-width: 640px;
+  }
+}
+
+/* ── Wide desktop (≥ 1024px) ──────────────────────────────── */
+@media (min-width: 1024px) {
+
+  /* Sidebar expands to show text labels */
+  #app {
+    grid-template-columns: 196px 1fr;
+  }
+
+  #tab-bar {
+    width: 196px;
+    padding: 24px 10px;
+    gap: 4px;
+  }
+
+  .tab-btn {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    margin: 0;
+    width: 100%;
+  }
+
+  .tab-icon { width: 18px; height: 18px; }
+
+  /* Larger wheel on wide screens */
+  .tasks-left-col { width: 340px; }
+  .wheel-svg-container, #wheel-svg { width: 340px; height: 340px; }
+
+  /* Tasks right col — comfortable reading width */
+  .tasks-right-col { max-width: 520px; }
+
+  #panel-tasks { gap: 40px; padding: 36px 40px 36px 36px; }
+}
+
+/* ── Keyboard shortcut hint (desktop only) ─────────────────── */
+@media (min-width: 768px) {
+  .kbd-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--fg3);
+    margin-left: 6px;
+  }
+  .kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    border: 1px solid var(--bar-border);
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--bg-input);
+    color: var(--fg2);
+    line-height: 1.6;
+  }
+}

@@ -223,6 +223,9 @@
     currentTheme = theme;
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('wt_theme', theme);
+    // Keep PWA theme-color in sync
+    const metaTC = document.getElementById('meta-theme-color');
+    if (metaTC) metaTC.setAttribute('content', THEMES[theme]?.bg || '#FAF7F2');
     renderThemeGrids();
     renderWheel();
   }
@@ -1227,11 +1230,33 @@
     $('rest-day-link').addEventListener('click', () => showDoneToast({ name: 'Rest day taken', minutes: 0 }));
 
     document.addEventListener('keydown', e => {
-      if (e.key !== 'Escape') return;
-      $$('.sheet-overlay:not([hidden])').forEach(s => { s.hidden = true; });
-      if (!$('focus-screen').hidden) {
-        clearInterval(focusInterval);
-        $('focus-screen').hidden = true;
+      // Don't intercept while user is typing
+      if (e.target.matches('input, textarea, select')) return;
+      if (e.metaKey || e.ctrlKey) return;
+
+      switch (e.key) {
+        case 'Escape':
+          $$('.sheet-overlay:not([hidden])').forEach(s => { s.hidden = true; });
+          if (!$('focus-screen').hidden) {
+            clearInterval(focusInterval);
+            $('focus-screen').hidden = true;
+          }
+          break;
+        case 'n': case 'N': case '+':
+          openAddTask();
+          break;
+        case 's': case 'S':
+          if (!$('spin-btn').hidden) spin();
+          break;
+        case '1':
+          switchTab('tasks');
+          break;
+        case '2':
+          if (habitsEnabled) switchTab('habits');
+          break;
+        case '3':
+          switchTab('you');
+          break;
       }
     });
   }
