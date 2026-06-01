@@ -818,6 +818,22 @@
       meta.textContent = `${cachedStreak}-day streak · to ${nextM}`;
     }
     updateArcProgress();
+    renderSidebarFooter();
+  }
+
+  function renderSidebarFooter() {
+    const streakRow = $('sidebar-streak-row');
+    const userRow   = $('sidebar-user-row');
+    if (!streakRow || !userRow) return;
+    const nextM = MILESTONES.find(m => m > cachedStreak) ?? 100;
+    streakRow.innerHTML = `
+      <svg viewBox="0 0 24 24" style="width:13px;height:13px;flex-shrink:0" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3c0 4 4 5 4 9a4 4 0 0 1-8 0c0-2 1.5-3 1.5-5C9.5 5 12 3 12 3z"/>
+      </svg>
+      <span>${cachedStreak}-day streak &middot; next at ${nextM}</span>`;
+    userRow.innerHTML = `
+      <div class="sidebar-avatar-sm">IO</div>
+      <span class="sidebar-user-name">ion.maker</span>`;
   }
 
   // ── Watering moment ────────────────────────────────────────

@@ -178,8 +178,16 @@
 
   </main>
 
-  <!-- ── Bottom tab bar ────────────────────────────────── -->
+  <!-- ── Bottom tab bar / Desktop sidebar ─────────────── -->
   <nav id="tab-bar">
+    <!-- Sidebar brand — shown only on desktop -->
+    <div class="sidebar-brand" aria-hidden="true">
+      <div class="sidebar-brand-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M3.5 12h17M6 6l12 12M18 6 6 18"/></svg>
+      </div>
+      <span class="sidebar-brand-name">WheelTodo</span>
+    </div>
+
     <button class="tab-btn active" data-tab="tasks">
       <svg class="glyph tab-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M3.5 12h17M6 6l12 12M18 6 6 18"/></svg>
       <span>Tasks</span>
@@ -192,6 +200,12 @@
       <svg class="glyph tab-icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
       <span>You</span>
     </button>
+
+    <!-- Sidebar footer — shown only on desktop -->
+    <div class="sidebar-foot" aria-hidden="true">
+      <div id="sidebar-streak-row" class="sidebar-stat-row"></div>
+      <div id="sidebar-user-row" class="sidebar-user-row"></div>
+    </div>
   </nav>
 
 </div><!-- #app -->
