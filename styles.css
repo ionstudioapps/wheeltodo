@@ -506,6 +506,7 @@ a { color: inherit; text-decoration: none; }
   color: var(--fg3);
   cursor: grab;
   flex-shrink: 0;
+  touch-action: none;
 }
 .task-drag-btn:active { cursor: grabbing; }
 .task-drag-btn .glyph { width: 14px; height: 14px; fill: var(--fg3); stroke: none; }

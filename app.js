@@ -701,54 +701,71 @@
     closeSheet('sheet-picked');
   }
 
-  // ── Drag reorder ───────────────────────────────────────────
+  // ── Drag reorder (pointer-events — works on touch + mouse) ──
   function setupDragReorder() {
     const list = $('task-list');
     if (!list) return;
 
-    list.addEventListener('dragstart', e => {
-      const li = e.target.closest('li.task-item');
-      if (!li) return;
-      dragSrc = li;
-      e.dataTransfer.effectAllowed = 'move';
-      requestAnimationFrame(() => { if (li) li.style.opacity = '.4'; });
-    });
-    list.addEventListener('dragend', () => {
-      if (dragSrc) dragSrc.style.opacity = '';
-      dragSrc = null;
-    });
-    list.addEventListener('dragover', e => {
-      e.preventDefault();
-      const li = e.target.closest('li.task-item');
-      if (!li || !dragSrc || li === dragSrc) return;
-      const all    = [...list.querySelectorAll('li.task-item')];
-      const srcIdx = all.indexOf(dragSrc);
-      const tgtIdx = all.indexOf(li);
-      if (srcIdx < tgtIdx) list.insertBefore(dragSrc, li.nextSibling);
-      else                 list.insertBefore(dragSrc, li);
-    });
-    list.addEventListener('drop', async e => {
-      e.preventDefault();
-      const all    = [...list.querySelectorAll('li.task-item')];
-      const active = getActiveTasks();
-      const reordered = all.map(li => active.find(t => t.id === li.dataset.id)).filter(Boolean);
-      const done   = getDoneTasks();
-      tasks = [...reordered, ...done];
-      await saveTodayTasks();
-      renderWheel();
-    });
+    let dragging  = null;
+    let pointerId = null;
 
-    const attachDrag = () => {
-      list.querySelectorAll('li.task-item').forEach(li => {
-        const btn = li.querySelector('.task-drag-btn');
-        if (!btn) return;
-        btn.addEventListener('mousedown', () => { li.draggable = true; });
-        btn.addEventListener('mouseup',   () => { li.draggable = false; });
-        btn.addEventListener('mouseleave',() => { li.draggable = false; });
+    function commit() {
+      if (!dragging) return;
+      dragging.style.opacity   = '';
+      dragging.style.boxShadow = '';
+      const all       = [...list.querySelectorAll('li.task-item')];
+      const active    = getActiveTasks();
+      const reordered = all.map(el => active.find(t => t.id === el.dataset.id)).filter(Boolean);
+      tasks = [...reordered, ...getDoneTasks()];
+      saveTodayTasks().then(() => renderWheel());
+      dragging = null; pointerId = null;
+    }
+
+    function onMove(e) {
+      if (!dragging || e.pointerId !== pointerId) return;
+      e.preventDefault();
+      const all = [...list.querySelectorAll('li.task-item')];
+      const idx = all.indexOf(dragging);
+      // Swap with previous item if cursor crosses its midpoint going up
+      if (idx > 0) {
+        const prev = all[idx - 1];
+        if (e.clientY < prev.getBoundingClientRect().top + prev.offsetHeight * 0.5) {
+          list.insertBefore(dragging, prev); return;
+        }
+      }
+      // Swap with next item if cursor crosses its midpoint going down
+      if (idx < all.length - 1) {
+        const next = all[idx + 1];
+        if (e.clientY > next.getBoundingClientRect().top + next.offsetHeight * 0.5) {
+          list.insertBefore(dragging, next.nextSibling);
+        }
+      }
+    }
+
+    function attachHandlers() {
+      list.querySelectorAll('.task-drag-btn').forEach(btn => {
+        if (btn._pDrag) return;   // already attached
+        btn._pDrag = true;
+
+        btn.addEventListener('pointerdown', e => {
+          const li = btn.closest('li.task-item');
+          if (!li) return;
+          e.preventDefault();
+          try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+          dragging  = li;
+          pointerId = e.pointerId;
+          li.style.opacity   = '0.5';
+          li.style.boxShadow = '0 4px 16px rgba(0,0,0,0.13)';
+        });
+
+        btn.addEventListener('pointermove',   onMove);
+        btn.addEventListener('pointerup',     commit);
+        btn.addEventListener('pointercancel', commit);
       });
-    };
-    new MutationObserver(attachDrag).observe(list, { childList: true });
-    attachDrag();
+    }
+
+    new MutationObserver(attachHandlers).observe(list, { childList: true });
+    attachHandlers();
   }
 
   // ── Toasts ─────────────────────────────────────────────────
