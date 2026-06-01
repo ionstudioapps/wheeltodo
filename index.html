@@ -1,205 +1,392 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Wheel Todo · Pomodoro</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@500&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <div class="app">
-      <header class="header">
-        <h1>Wheel Todo</h1>
-        <p class="tagline">Add tasks, spin the wheel, focus with Pomodoro.</p>
+<html lang="en" data-theme="warm-start">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wheel Todo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
 
-        <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
-          Light
-        </button>
-
-        <a href="calendar.html" class="calendar-open-btn" aria-label="Open calendar">Calendar</a>
-
-        <button
-          type="button"
-          class="wheel-open-btn"
-          id="wheel-open-btn"
-          aria-label="Open wheel"
-          data-tip="don't know where to start? select a random task by spinning the wheel!"
-        >
-          <canvas id="mini-wheel" width="92" height="92" aria-hidden="true"></canvas>
-          <div class="wheel-mini-pointer" aria-hidden="true"></div>
-        </button>
-      </header>
-
-      <main class="main">
-        <section class="panel tasks-panel" aria-labelledby="tasks-heading">
-          <h2 id="tasks-heading">Today’s tasks</h2>
-          <form class="task-form" id="task-form" autocomplete="off">
-            <div class="task-form-grow">
-              <label class="sr-only" for="task-input">New task</label>
-              <input
-                id="task-input"
-                type="text"
-                placeholder="What needs doing?"
-                maxlength="120"
-                required
-              />
-            </div>
-            <div class="duration-field">
-              <label class="sr-only" for="duration-input">Minutes to complete</label>
-              <input
-                id="duration-input"
-                type="number"
-                inputmode="numeric"
-                min="1"
-                max="480"
-                step="1"
-                value="25"
-                placeholder="Min"
-                required
-                aria-describedby="duration-hint"
-              />
-            </div>
-            <button type="submit" class="btn btn-primary">Add</button>
-            <p class="duration-hint" id="duration-hint">Estimated minutes for this task (used as the focus timer).</p>
-          </form>
-          <ul class="task-list" id="task-list" aria-live="polite"></ul>
-          <p class="empty-hint" id="empty-hint">Add at least one task to spin the wheel.</p>
-          <button type="button" class="btn btn-ghost" id="clear-tasks" hidden>
-            Clear all tasks
-          </button>
-
-          <h2 id="done-heading">Done</h2>
-          <ul class="task-list done-list" id="done-list" aria-live="polite"></ul>
-          <p class="empty-hint" id="done-empty" hidden>
-            Completed tasks will appear here.
-          </p>
-        </section>
-
-        <div class="right-col">
-          <section class="panel pomodoro-panel" aria-labelledby="pomo-heading">
-            <h2 id="pomo-heading">Pomodoro</h2>
-            <div class="pomo-idle" id="pomo-idle">
-              <p class="pomo-placeholder">Spin the wheel to pick a task and start focusing.</p>
-            </div>
-            <div class="pomo-active" id="pomo-active" hidden>
-              <p class="pomo-task-label">Working on</p>
-              <p class="pomo-task-name" id="pomo-task-name"></p>
-              <p class="pomo-planned" id="pomo-planned" hidden></p>
-              <div class="pomo-time" id="pomo-time">00:00</div>
-              <div class="pomo-controls">
-                <button type="button" class="btn btn-primary" id="pomo-toggle">Pause</button>
-                <button type="button" class="btn btn-done" id="pomo-done-btn" hidden>Done</button>
-                <button type="button" class="btn btn-ghost" id="pomo-reset">Reset</button>
-              </div>
-              <p class="pomo-done" id="pomo-done" hidden>Session complete. Nice work.</p>
-            </div>
-          </section>
-
-          <section class="panel productivity-panel" aria-label="Daily productivity">
-            <div class="productivity-widget" id="productivity-widget" aria-label="Daily productivity">
-              <div class="productivity-title-row">
-                <div class="productivity-title">Daily productivity</div>
-                <div class="productivity-mode">
-                  <button
-                    type="button"
-                    class="productivity-mode-btn productivity-mode-btn--active"
-                    id="productivity-mode-time"
-                  >
-                    Time
-                  </button>
-                  <button type="button" class="productivity-mode-btn" id="productivity-mode-tasks">
-                    Tasks
-                  </button>
-                </div>
-              </div>
-
-              <div class="productivity-meta">
-                <div class="productivity-minutes" id="productivity-minutes">0 min</div>
-                <div class="productivity-task-meta" id="productivity-task-meta" hidden></div>
-              </div>
-
-              <div
-                class="productivity-bar"
-                id="productivity-bar-time"
-                role="progressbar"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-valuenow="0"
-              >
-                <div class="productivity-bar-fill" id="productivity-bar-time-fill"></div>
-                <div class="productivity-time-onbar" id="productivity-time-onbar" aria-hidden="true">
-                  <span class="productivity-time-spent" id="productivity-time-spent">0 min spent</span>
-                  <span class="productivity-time-sep"> · </span>
-                  <span class="productivity-time-left" id="productivity-time-left">0 min left</span>
-                </div>
-              </div>
-              <div
-                class="productivity-bar"
-                id="productivity-bar-tasks"
-                role="progressbar"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                aria-valuenow="0"
-                hidden
-              >
-                <div class="productivity-bar-fill" id="productivity-bar-tasks-fill"></div>
-              </div>
-
-              <div class="productivity-percent" id="productivity-percent">0%</div>
-            </div>
-          </section>
-        </div>
-      </main>
-
-      <footer class="footer">
-        <span>Focus timer matches each task’s estimated minutes · Tasks saved in this browser</span>
-      </footer>
+  <!-- ── Top bar ────────────────────────────────────────── -->
+  <header id="top-bar">
+    <button id="streak-btn" class="streak-btn" aria-label="View history">
+      <svg class="glyph" viewBox="0 0 24 24"><path d="M12 3c0 4 4 5 4 9a4 4 0 0 1-8 0c0-2 1.5-3 1.5-5C9.5 5 12 3 12 3z"/></svg>
+      <span id="streak-count">0</span>
+    </button>
+    <div class="top-bar-right">
+      <button id="add-btn" class="icon-btn" aria-label="Add task">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button id="avatar-btn" class="avatar-btn" aria-label="Profile">IO</button>
     </div>
+  </header>
 
-    <div class="modal-overlay" id="result-modal" hidden role="dialog" aria-modal="true" aria-labelledby="result-title">
-      <div class="modal">
-        <h3 id="result-title">You got</h3>
-        <p class="modal-task" id="result-task"></p>
-        <p class="modal-meta" id="result-duration"></p>
-        <button type="button" class="btn btn-accent" id="modal-start">Start Pomodoro</button>
+  <!-- ── Main panels ────────────────────────────────────── -->
+  <main id="content">
+
+    <!-- TASKS TAB ─────────────────────────────────────── -->
+    <section id="panel-tasks" class="tab-panel active">
+      <div class="hero-title">
+        <div class="hero-lead" id="tasks-lead">Not sure where to start?</div>
+        <div class="hero-accent" id="tasks-accent">Spin.</div>
       </div>
-    </div>
 
-    <div
-      class="wheel-modal-overlay"
-      id="wheel-modal"
-      hidden
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="wheel-modal-title"
-    >
-      <div class="wheel-modal">
-        <div class="wheel-modal-head">
-          <h2 id="wheel-modal-title">Spin</h2>
-          <button type="button" class="btn btn-ghost" id="wheel-close-btn" aria-label="Close wheel">
-            ✕
+      <!-- Wheel / empty -->
+      <div id="wheel-area">
+        <div id="empty-state" hidden>
+          <button id="empty-circle-btn" class="empty-circle" aria-label="Add your first task">
+            <div class="empty-mic-bg">
+              <svg class="glyph" viewBox="0 0 24 24" style="width:26px;height:26px"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+            </div>
+            <span class="empty-circle-label">Tell me your day</span>
+          </button>
+          <p class="empty-hint-text">Tap the mic, mumble what you need to do.<br>Or add manually below.</p>
+        </div>
+
+        <div id="wheel-wrap" hidden>
+          <div class="wheel-pointer-notch"></div>
+          <div class="wheel-svg-container">
+            <svg id="wheel-svg" viewBox="0 0 300 300" width="300" height="300">
+              <!-- Ambient milestone arc (fixed, outer ring — not rotating) -->
+              <circle id="arc-track" cx="150" cy="150" r="148" fill="none" stroke-width="2"/>
+              <path id="arc-progress" fill="none" stroke-width="2" stroke-linecap="round"/>
+              <!-- Rotating disc group -->
+              <g id="wheel-disc"></g>
+              <!-- Icons stay upright (positions recalculated each frame) -->
+              <g id="wheel-labels"></g>
+            </svg>
+          </div>
+        </div>
+        <!-- Progress stat below the wheel (small) -->
+        <div id="wheel-stat" class="wheel-stat"></div>
+      </div>
+
+      <!-- CTA area -->
+      <div id="task-cta-area">
+        <!-- Empty-state CTAs -->
+        <button id="add-first-btn" class="btn-pill btn-fg" hidden>
+          <svg class="glyph" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          Add your first task
+        </button>
+        <button id="rest-day-link" class="btn-ghost-small" hidden>
+          <svg class="glyph" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+          Can't today? Take a rest day →
+        </button>
+
+        <!-- Normal CTAs -->
+        <button id="spin-btn" class="btn-pill btn-fg" hidden>Spin the wheel</button>
+        <div id="streak-meta" class="streak-meta" hidden>
+          <span id="streak-to-next">0-day streak · to 3</span>
+          <button id="history-link" class="link-btn">
+            This week
+            <svg class="glyph" style="width:12px;height:12px" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg>
           </button>
         </div>
+      </div>
 
-        <div class="wheel-wrap wheel-wrap--modal">
-          <canvas id="wheel" width="320" height="320" aria-hidden="true"></canvas>
-          <div class="wheel-pointer" aria-hidden="true"></div>
+      <!-- Task list (shown when tasks exist) -->
+      <div id="today-tasks" hidden>
+        <div class="section-header">
+          <span id="today-count-label" class="section-label-text">Today · 0 tasks</span>
+          <button id="add-task-inline-btn" class="link-btn">
+            <svg class="glyph" style="width:12px;height:12px" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            add
+          </button>
         </div>
-
-        <button type="button" class="btn btn-accent btn-spin" id="spin-btn" disabled>
-          Spin the wheel
+        <ul id="task-list" class="task-list" role="list"></ul>
+        <button id="add-task-dashed" class="btn-dashed">
+          <svg class="glyph" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          Add task
         </button>
       </div>
+
+      <!-- Done section -->
+      <div id="done-section" hidden>
+        <div class="section-header" style="margin-top:8px">
+          <span class="section-label-text">Done</span>
+        </div>
+        <ul id="done-list" class="task-list done-list" role="list"></ul>
+      </div>
+    </section>
+
+    <!-- HABITS TAB ─────────────────────────────────────── -->
+    <section id="panel-habits" class="tab-panel" hidden>
+      <div class="hero-title">
+        <div class="hero-lead">Show up.</div>
+        <div class="hero-accent">Every day.</div>
+      </div>
+      <div class="tab-scroll-content">
+        <div id="habits-heatmap" class="heatmap-wrap"></div>
+        <div id="habits-stats" class="stats-grid three-col" style="margin-top:20px"></div>
+        <div class="section-label-text" style="margin:24px 0 6px;letter-spacing:.1em;text-transform:uppercase;font-size:10.5px;font-weight:600">Today</div>
+        <ul id="habits-list" class="habits-list" role="list"></ul>
+        <button id="add-habit-btn" class="btn-dashed" style="margin-top:18px">
+          <svg class="glyph" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          New habit
+        </button>
+      </div>
+    </section>
+
+    <!-- YOU TAB ─────────────────────────────────────────── -->
+    <section id="panel-you" class="tab-panel" hidden>
+      <div class="hero-title">
+        <div class="hero-lead">Hello,</div>
+        <div class="hero-accent">Maker.</div>
+      </div>
+      <div class="tab-scroll-content">
+        <!-- Avatar + identity row (prototype pattern) -->
+        <div id="you-avatar-area" class="you-avatar-area"></div>
+
+        <div id="you-stats" class="stats-grid two-col" style="margin-top:0"></div>
+
+        <div class="settings-section-label">Theme</div>
+        <div id="theme-grid" class="theme-grid"></div>
+
+        <div class="settings-section-label" style="margin-top:24px">Settings</div>
+        <div class="settings-row" id="habits-toggle-row">
+          <div>
+            <div class="settings-row-title">Habits tab</div>
+            <div class="settings-row-sub">Heatmap + daily check-ins. Off keeps things light.</div>
+          </div>
+          <button id="habits-toggle-btn" class="toggle-switch" role="switch" aria-checked="true">
+            <div class="toggle-thumb"></div>
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ── Bottom tab bar ────────────────────────────────── -->
+  <nav id="tab-bar">
+    <button class="tab-btn active" data-tab="tasks">
+      <svg class="glyph tab-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M3.5 12h17M6 6l12 12M18 6 6 18"/></svg>
+      <span>Tasks</span>
+    </button>
+    <button class="tab-btn" data-tab="habits" id="tab-habits-btn">
+      <svg class="glyph tab-icon" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.4"/><rect x="14" y="4" width="6" height="6" rx="1.4"/><rect x="4" y="14" width="6" height="6" rx="1.4"/><rect x="14" y="14" width="6" height="6" rx="1.4"/></svg>
+      <span>Habits</span>
+    </button>
+    <button class="tab-btn" data-tab="you">
+      <svg class="glyph tab-icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+      <span>You</span>
+    </button>
+  </nav>
+
+</div><!-- #app -->
+
+<!-- ═══════════════════════════════════ OVERLAYS ════════ -->
+
+<!-- Add / Edit Task Sheet -->
+<div id="sheet-add" class="sheet-overlay" hidden role="dialog" aria-modal="true" aria-label="Add task">
+  <div class="sheet-backdrop" data-close="sheet-add"></div>
+  <div class="sheet-body">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header-row">
+      <div id="add-sheet-title" class="sheet-title">New task</div>
+      <button class="icon-btn" data-close="sheet-add" aria-label="Close">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
     </div>
+    <form id="add-task-form" novalidate>
+      <label class="form-label" for="add-task-name">Task name</label>
+      <input id="add-task-name" class="form-input" type="text" placeholder="What needs doing?" maxlength="120" autocomplete="off" />
 
-    <canvas id="fireworks" class="fireworks-canvas" aria-hidden="true"></canvas>
+      <!-- Color picker swatches -->
+      <div class="form-label" style="margin-top:16px">Color</div>
+      <div id="add-task-color-picker" class="color-picker"></div>
 
-    <script src="app.js"></script>
-  </body>
+      <!-- Duration chips -->
+      <div class="form-label" style="margin-top:16px">Focus duration</div>
+      <div id="add-task-duration-chips" class="duration-chips">
+        <button type="button" class="duration-chip" data-mins="5">5m</button>
+        <button type="button" class="duration-chip" data-mins="10">10m</button>
+        <button type="button" class="duration-chip active" data-mins="25">25m</button>
+        <button type="button" class="duration-chip" data-mins="45">45m</button>
+        <button type="button" class="duration-chip" data-mins="60">60m</button>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-pill btn-fg" id="add-task-submit-btn">Add to wheel</button>
+        <button type="button" class="btn-danger" id="delete-task-btn" hidden>Delete task</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add / Edit Habit Sheet -->
+<div id="sheet-habit" class="sheet-overlay" hidden role="dialog" aria-modal="true" aria-label="Add habit">
+  <div class="sheet-backdrop" data-close="sheet-habit"></div>
+  <div class="sheet-body">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header-row">
+      <div id="habit-sheet-title" class="sheet-title">New habit</div>
+      <button class="icon-btn" data-close="sheet-habit" aria-label="Close">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <form id="add-habit-form" novalidate>
+      <label class="form-label" for="habit-name-input">Habit name</label>
+      <input id="habit-name-input" class="form-input" type="text" placeholder="e.g. Stretch, Read, Journal" maxlength="80" autocomplete="off" />
+      <label class="form-label" for="habit-cat-input">Category</label>
+      <select id="habit-cat-input" class="form-input form-select">
+        <option value="Physical">Physical</option>
+        <option value="Mental">Mental</option>
+        <option value="Nourishment">Nourishment</option>
+        <option value="Habit">Habit</option>
+      </select>
+      <label class="form-label" for="habit-mins-input">Duration (minutes)</label>
+      <input id="habit-mins-input" class="form-input" type="number" min="0" max="240" value="10" />
+      <div class="form-actions">
+        <button type="submit" class="btn-pill btn-fg">Save habit</button>
+        <button type="button" class="btn-danger" id="delete-habit-btn" hidden>Delete</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Picked Task Sheet (post-spin) -->
+<div id="sheet-picked" class="sheet-overlay" hidden role="dialog" aria-modal="true" aria-label="Task picked">
+  <div class="sheet-backdrop" data-close="sheet-picked"></div>
+  <div class="sheet-body sheet-body-center">
+    <div class="sheet-handle"></div>
+    <div id="picked-badge" class="picked-badge">D</div>
+    <div class="picked-eyebrow">You got</div>
+    <div id="picked-name" class="picked-name"></div>
+    <div id="picked-meta" class="picked-meta"></div>
+    <button id="start-focus-btn" class="btn-pill btn-fg" style="margin-top:22px;width:100%">Start focus</button>
+    <button id="respin-btn" class="btn-ghost-text">Re-spin</button>
+  </div>
+</div>
+
+<!-- History Sheet -->
+<div id="sheet-history" class="sheet-overlay" hidden role="dialog" aria-modal="true" aria-label="History">
+  <div class="sheet-backdrop" data-close="sheet-history"></div>
+  <div class="sheet-body sheet-body-tall">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header-row">
+      <div>
+        <div class="hero-lead" style="font-size:16px;margin-bottom:0">This is</div>
+        <div class="hero-accent" style="font-size:30px">your week.</div>
+      </div>
+      <button class="icon-btn" data-close="sheet-history" aria-label="Close">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div id="history-heatmap" class="heatmap-wrap" style="margin-top:20px"></div>
+    <div id="history-stats" class="stats-grid three-col" style="margin-top:16px"></div>
+    <div class="section-label-text" style="margin:24px 0 8px;letter-spacing:.1em;text-transform:uppercase;font-size:10.5px;font-weight:600">Recently done</div>
+    <ul id="history-log" class="history-log" role="list"></ul>
+  </div>
+</div>
+
+<!-- Profile Sheet -->
+<div id="sheet-profile" class="sheet-overlay" hidden role="dialog" aria-modal="true" aria-label="Profile">
+  <div class="sheet-backdrop" data-close="sheet-profile"></div>
+  <div class="sheet-body">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header-row">
+      <div>
+        <div class="hero-lead" style="font-size:16px;margin-bottom:0">Hello,</div>
+        <div class="hero-accent" style="font-size:30px">Maker.</div>
+      </div>
+      <button class="icon-btn" data-close="sheet-profile" aria-label="Close">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div id="profile-stats" class="stats-grid two-col" style="margin-top:18px;margin-bottom:20px"></div>
+    <div class="settings-section-label">Theme</div>
+    <div id="profile-theme-grid" class="theme-grid"></div>
+  </div>
+</div>
+
+<!-- Focus Screen (full-screen takeover) -->
+<div id="focus-screen" class="focus-screen" hidden>
+  <div class="focus-header">
+    <button id="focus-back-btn" class="icon-btn" aria-label="Exit focus">
+      <svg class="glyph" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg>
+    </button>
+    <span class="focus-eyebrow">Focus</span>
+    <div style="width:32px"></div>
+  </div>
+  <div class="focus-body">
+    <div id="focus-badge" class="focus-badge">D</div>
+    <div id="focus-task-name" class="focus-task-name"></div>
+    <div class="focus-ring-container">
+      <!-- r=112 → circumference = 2π×112 ≈ 703.72 (matches prototype: size=240, r=(240-16)/2=112) -->
+      <svg id="focus-svg" viewBox="0 0 240 240" width="240" height="240">
+        <circle cx="120" cy="120" r="112" class="focus-ring-track"/>
+        <circle cx="120" cy="120" r="112" id="focus-ring" class="focus-ring-fill"
+          stroke-dasharray="703.72" stroke-dashoffset="0"
+          transform="rotate(-90 120 120)"/>
+      </svg>
+      <div class="focus-time-inner">
+        <div id="focus-time" class="focus-time">25:00</div>
+        <div id="focus-status-label" class="focus-status-label">remaining</div>
+      </div>
+    </div>
+    <div class="focus-controls">
+      <button id="focus-pause-btn" class="focus-circle-btn" aria-label="Pause/Resume">
+        <svg class="glyph" id="focus-pause-icon" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>
+      </button>
+      <button id="focus-done-btn" class="btn-pill btn-fg focus-done-btn">
+        <svg class="glyph" viewBox="0 0 24 24"><path d="m5 12 5 5 9-11"/></svg>
+        Done
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Watering Moment overlay -->
+<div id="watering-moment" class="watering-overlay" hidden>
+  <div class="watering-card">
+    <svg class="watering-plant" viewBox="0 0 64 64" width="96" height="96">
+      <path d="M21 44 L24 60 L40 60 L43 44 Z" class="plant-pot"/>
+      <ellipse cx="32" cy="44" rx="11" ry="2.2" class="plant-pot-rim"/>
+      <ellipse cx="32" cy="44" rx="9" ry="1.4" class="plant-soil"/>
+      <path d="M32 44 Q32 36 32 22" class="plant-stem"/>
+      <ellipse cx="32" cy="28" rx="3.6" ry="1.8" class="plant-leaf" transform="rotate(-12 32 28)"/>
+      <ellipse cx="26" cy="32" rx="5" ry="2.4" class="plant-leaf" transform="rotate(-35 26 32)"/>
+      <ellipse cx="38" cy="32" rx="5" ry="2.4" class="plant-leaf-deep" transform="rotate(35 38 32)"/>
+      <ellipse cx="23" cy="24" rx="4.2" ry="2" class="plant-leaf-deep" transform="rotate(-55 23 24)"/>
+      <ellipse cx="41" cy="24" rx="4.2" ry="2" class="plant-leaf" transform="rotate(55 41 24)"/>
+      <circle cx="32" cy="18" r="3.2" class="plant-bloom"/>
+    </svg>
+    <div class="watering-text">+ a little water.</div>
+    <div id="watering-sub" class="watering-sub"></div>
+  </div>
+</div>
+
+<!-- Done toast — card from top (prototype: position top:64, bgCard, border, shadow) -->
+<div id="done-toast" class="done-toast" hidden>
+  <div class="done-toast-check">
+    <svg viewBox="0 0 24 24" style="width:16px;height:16px;display:block" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m5 12 5 5 9-11"/>
+    </svg>
+  </div>
+  <div class="done-toast-info">
+    <div id="done-toast-name" class="done-toast-name"></div>
+    <div id="done-toast-mins" class="done-toast-mins"></div>
+  </div>
+</div>
+
+<!-- Undo toast — task name in Instrument Serif italic (prototype pattern) -->
+<div id="undo-toast" class="undo-toast" hidden>
+  <div class="undo-content">
+    <svg viewBox="0 0 24 24" style="width:16px;height:16px;flex-shrink:0;display:block" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>
+    </svg>
+    <span class="undo-label">Deleted <em id="undo-task-name" class="undo-task-serif"></em></span>
+    <button id="undo-btn" class="undo-action-btn">Undo</button>
+  </div>
+  <div id="undo-bar" class="undo-bar"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
 </html>

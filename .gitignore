@@ -21,3 +21,4 @@ pnpm-debug.log*
 
 .claude/worktrees/
 .vercel
+.env*.local
