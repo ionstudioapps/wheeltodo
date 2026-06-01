@@ -51,6 +51,7 @@
   let wateringTimeout = null;
   let dragSrc         = null;
   let selectedColorIdx = 0;
+  let selectedIconIdx  = 0;
   let selectedMins     = 25;
 
   // ── Helpers ────────────────────────────────────────────────
@@ -263,10 +264,30 @@
   // ── SVG Wheel ──────────────────────────────────────────────
   const SVG_NS  = 'http://www.w3.org/2000/svg';
   const CX      = 150;
-  const SLICE_R = 142;  // R - 8  (prototype: size/2 - 8)
-  const ARC_R   = 148;  // R - 2  (prototype: R - 2)
-  const HUB_R   = 84;   // prototype: Math.round(300 * 0.28)
-  const LABEL_R = 105;  // R * 0.7 = 150 * 0.7
+  const SLICE_R = 142;  // R - 8
+  const ARC_R   = 148;  // R - 2
+  const HUB_R   = 8;    // tiny center pin (full-wheel look)
+  const LABEL_R = 100;  // icon position radius
+
+  // Stroke-based icons for wheel slices (centered at 0,0, ±6-7 units)
+  const TASK_ICONS = [
+    // pencil (write / journal)
+    'M-3.5,4 L4,-3.5 5.5,-2 -2,5.5 Z M4,-3.5 L5,-5 L6.5,-3.5 L5,-2',
+    // checklist (plan / organize)
+    'M-6,-3 L6,-3 M-6,0 L6,0 M-6,3 L2,3',
+    // code brackets (dev / review)
+    'M-2,-4 L-6,0 L-2,4 M2,-4 L6,0 L2,4',
+    // star (priority / important)
+    'M0,-6 L1.5,-2.2 L6,-2.2 L2.5,0.8 L3.8,5.5 L0,3 L-3.8,5.5 L-2.5,0.8 L-6,-2.2 L-1.5,-2.2 Z',
+    // clock (deadline / time)
+    'M5,0 A5,5,0,1,1,4.9,1 Z M0,0 L0,-3 L2.5,-1.5',
+    // book (learn / read)
+    'M-5,-5 L-5,5 L0,5 L0,-5 Z M0,-5 L0,5 L5,3.5 L5,-6.5 Z',
+    // zap / lightning (quick / energy)
+    'M2,-6 L-2,0.5 L1.5,0.5 L-2,6 L6,-0.5 L2.5,-0.5 Z',
+    // heart (wellbeing / health)
+    'M0,5 C-5,1.5,-7,-3,-4,-5.5 C-2,-7,0,-4.5,0,-4.5 C0,-4.5,2,-7,4,-5.5 C7,-3,5,1.5,0,5 Z',
+  ];
 
   function getActiveTasks() { return tasks.filter(t => !t.done); }
   function getDoneTasks()   { return tasks.filter(t => t.done);  }
@@ -292,17 +313,20 @@
       disc.appendChild(path);
     });
 
+    // Tiny center pin (full-wheel look — no large hub hole)
     const hub = document.createElementNS(SVG_NS, 'circle');
     hub.setAttribute('cx',   CX);
     hub.setAttribute('cy',   CX);
     hub.setAttribute('r',    HUB_R);
     hub.setAttribute('fill', 'var(--bg-card)');
+    hub.setAttribute('stroke', 'rgba(255,255,255,0.35)');
+    hub.setAttribute('stroke-width', '1.5');
     disc.appendChild(hub);
 
     disc.setAttribute('transform', `rotate(${wheelRotation}, ${CX}, ${CX})`);
     updateWheelLabels();
     updateArcProgress();
-    updateHubText();
+    updateWheelStat();
   }
 
   function updateWheelLabels() {
@@ -316,12 +340,18 @@
     active.forEach((task, i) => {
       const angle  = wheelRotation + (i + 0.5) * sliceDeg;
       const { x, y } = polar(CX, LABEL_R, angle);
-      const text = document.createElementNS(SVG_NS, 'text');
-      text.setAttribute('x',     x.toFixed(2));
-      text.setAttribute('y',     y.toFixed(2));
-      text.setAttribute('class', 'wheel-label-text');
-      text.textContent = task.initial || getInitial(task.name);
-      labels.appendChild(text);
+      const iconD = TASK_ICONS[(task.iconIdx ?? i) % TASK_ICONS.length];
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('transform', `translate(${x.toFixed(2)},${y.toFixed(2)})`);
+      const p = document.createElementNS(SVG_NS, 'path');
+      p.setAttribute('d',                iconD);
+      p.setAttribute('fill',             'none');
+      p.setAttribute('stroke',           'rgba(255,255,255,0.88)');
+      p.setAttribute('stroke-width',     n <= 2 ? '1.8' : '1.5');
+      p.setAttribute('stroke-linecap',  'round');
+      p.setAttribute('stroke-linejoin', 'round');
+      g.appendChild(p);
+      labels.appendChild(g);
     });
   }
 
@@ -340,10 +370,10 @@
     arcEl.setAttribute('d', `M ${CX} ${CX - ARC_R} A ${ARC_R} ${ARC_R} 0 ${lg} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)}`);
   }
 
-  function updateHubText() {
-    const el   = $('hub-num');
+  function updateWheelStat() {
+    const el   = $('wheel-stat');
     const done = getDoneTasks().length;
-    if (el) el.textContent = `${done}/${tasks.length}`;
+    if (el) el.textContent = tasks.length > 0 ? `${done} of ${tasks.length} done today` : '';
   }
 
   function updateWheelVisibility() {
@@ -552,6 +582,7 @@
   function openAddTask() {
     editingTaskId    = null;
     selectedColorIdx = getActiveTasks().length % getWheelColors().length;
+    selectedIconIdx  = getActiveTasks().length % TASK_ICONS.length;
     selectedMins     = 25;
     $('add-sheet-title').textContent     = 'New task';
     $('add-task-name').value             = '';
@@ -568,6 +599,7 @@
     if (!task) return;
     editingTaskId    = id;
     selectedColorIdx = task.colorIdx ?? 0;
+    selectedIconIdx  = task.iconIdx  ?? 0;
     selectedMins     = task.minutes || 25;
     $('add-sheet-title').textContent     = 'Edit task';
     $('add-task-name').value             = task.name;
@@ -611,13 +643,14 @@
       initial:  getInitial(name),
       minutes:  selectedMins,
       colorIdx: selectedColorIdx,
+      iconIdx:  selectedIconIdx,
       done:     false,
     };
     tasks.push(task);
     await saveTodayTasks();
     renderTaskList();
     renderWheel();
-    updateHubText();
+    updateWheelStat();
     closeSheet('sheet-add');
   }
 
@@ -628,6 +661,7 @@
       task.initial  = getInitial(name);
       task.minutes  = selectedMins;
       task.colorIdx = selectedColorIdx;
+      task.iconIdx  = selectedIconIdx;
       await saveTodayTasks();
       renderTaskList();
       renderWheel();
@@ -657,7 +691,7 @@
     await saveTodayTasks();
     renderTaskList();
     renderWheel();
-    updateHubText();
+    updateWheelStat();
     await updateStreak();
     showWateringMoment(task.name);
     showDoneToast(task);
@@ -1192,7 +1226,7 @@
     applyTheme(currentTheme);
     renderTaskList();
     renderWheel();
-    updateHubText();
+    updateWheelStat();
     await updateStreak();
 
     const tabBtn = $('tab-habits-btn');
