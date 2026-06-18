@@ -13,6 +13,8 @@ export interface DbTask {
   color: string;
   icon: string;
   category?: string;
+  context?: string;       // background captured from voice input
+  parentTaskId?: string;
 }
 
 export interface DbCompletedTask {
@@ -69,6 +71,7 @@ export async function dbLoad(userId: string) {
   const tasks: DbTask[] = (tasksRes.data ?? []).map((r: any) => ({
     id: r.id, name: r.name, minutes: r.minutes,
     color: r.color, icon: r.icon, category: r.category ?? undefined,
+    context: r.context ?? undefined,
     parentTaskId: r.parent_task_id ?? undefined,
   }));
 
@@ -101,10 +104,11 @@ export async function dbLoad(userId: string) {
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
-export function dbUpsertTask(userId: string, task: DbTask & { parentTaskId?: string }, position: number) {
+export function dbUpsertTask(userId: string, task: DbTask, position: number) {
   sb().from('tasks').upsert(
     { id: task.id, user_id: userId, name: task.name, minutes: task.minutes,
       color: task.color, icon: task.icon, category: task.category ?? null,
+      context: task.context ?? null,
       parent_task_id: task.parentTaskId ?? null, position },
     { onConflict: 'id,user_id' }
   ).then(() => {}, () => {});
