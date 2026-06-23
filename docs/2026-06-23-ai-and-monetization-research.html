@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WheelTodo — AI &amp; Monetization Research</title>
+<style>
+  :root{
+    --bg:#faf8f4; --bg-soft:#f2efe9; --card:#ffffff; --ink:#1c1a17; --muted:#6b655c;
+    --line:#e7e1d7; --coral:#FF5C4D; --coral-soft:#fff0ee; --teal:#2BA89E; --teal-soft:#e9f7f5;
+    --purple:#7C5CFC; --purple-soft:#f0ecff; --amber:#E5A100; --amber-soft:#fdf4dd;
+    --green:#1f9d57; --green-soft:#e7f6ec; --maxw:1080px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--coral);z-index:100;transition:width .1s}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+
+  /* Hero */
+  header.hero{background:linear-gradient(160deg,#1c1a17 0%,#2c2722 100%);color:#fff;padding:64px 0 52px;margin-bottom:8px}
+  .hero .wrap{max-width:880px}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#ffb3a8;font-weight:700;margin-bottom:18px}
+  .eyebrow .dot{width:18px;height:18px;border-radius:50%;background:conic-gradient(var(--coral),var(--amber),var(--teal),var(--purple),var(--coral))}
+  h1{font-size:clamp(30px,5vw,46px);line-height:1.1;margin:0 0 16px;font-weight:800;letter-spacing:-.02em}
+  .hero p.sub{font-size:18px;color:#d9d3c8;margin:0 0 28px;max-width:680px}
+  .meta-row{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:13px;color:#b8b1a4}
+  .meta-row b{color:#fff;font-weight:600}
+
+  /* Nav */
+  nav.toc{position:sticky;top:0;z-index:50;background:rgba(250,248,244,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  nav.toc .wrap{display:flex;gap:4px;overflow-x:auto;padding:10px 24px;scrollbar-width:thin}
+  nav.toc a{flex:0 0 auto;font-size:13px;font-weight:600;color:var(--muted);text-decoration:none;padding:7px 12px;border-radius:8px;white-space:nowrap}
+  nav.toc a:hover{background:var(--bg-soft);color:var(--ink)}
+  nav.toc a.active{background:var(--ink);color:#fff}
+
+  main{padding:34px 0 60px}
+  section{margin:0 0 14px;scroll-margin-top:62px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:30px 32px;margin-bottom:22px;box-shadow:0 1px 2px rgba(0,0,0,.02)}
+  .num{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;background:var(--coral-soft);color:var(--coral);font-weight:800;font-size:15px;margin-right:12px;vertical-align:2px}
+  h2{font-size:26px;font-weight:800;letter-spacing:-.01em;margin:0 0 6px}
+  h2 .num{}
+  .lead{color:var(--muted);font-size:15.5px;margin:0 0 20px;padding-left:42px}
+  h3{font-size:18px;font-weight:700;margin:26px 0 10px}
+  h4{font-size:15px;font-weight:700;margin:18px 0 6px;color:var(--ink)}
+  p{margin:0 0 14px}
+  a{color:#c8432f;text-decoration:none;border-bottom:1px solid rgba(200,67,47,.25)}
+  a:hover{border-bottom-color:var(--coral)}
+  ul,ol{margin:0 0 14px;padding-left:22px}
+  li{margin:6px 0}
+  strong{font-weight:700}
+  code{background:var(--bg-soft);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#9a3b2a}
+  hr{border:none;border-top:1px solid var(--line);margin:26px 0}
+
+  /* TL;DR stat grid */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:6px 0 4px}
+  .stat{background:var(--bg-soft);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .stat .big{font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
+  .stat .lbl{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.4}
+  .stat.coral .big{color:var(--coral)} .stat.teal .big{color:var(--teal)}
+  .stat.purple .big{color:var(--purple)} .stat.amber .big{color:var(--amber)}
+
+  /* callouts */
+  .callout{border-left:4px solid var(--coral);background:var(--coral-soft);border-radius:0 12px 12px 0;padding:16px 20px;margin:18px 0}
+  .callout.teal{border-color:var(--teal);background:var(--teal-soft)}
+  .callout.purple{border-color:var(--purple);background:var(--purple-soft)}
+  .callout.amber{border-color:var(--amber);background:var(--amber-soft)}
+  .callout.green{border-color:var(--green);background:var(--green-soft)}
+  .callout .tag{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:6px}
+  .callout.coral .tag,.callout .tag{color:var(--coral)} .callout.teal .tag{color:var(--teal)}
+  .callout.purple .tag{color:var(--purple)} .callout.amber .tag{color:#b07d00} .callout.green .tag{color:var(--green)}
+  .callout p:last-child{margin-bottom:0}
+
+  /* tables */
+  .tbl{overflow-x:auto;margin:14px 0 18px;border:1px solid var(--line);border-radius:12px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:540px}
+  th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--bg-soft);font-weight:700;font-size:12.5px;letter-spacing:.01em;position:sticky;top:0}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:nth-child(even){background:#fcfbf9}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;line-height:1.5}
+  .pill.free{background:var(--green-soft);color:var(--green)}
+  .pill.paid{background:var(--coral-soft);color:var(--coral)}
+  .pill.warn{background:var(--amber-soft);color:#b07d00}
+  .best{background:var(--green-soft)!important}
+
+  /* bar viz */
+  .bars{margin:16px 0}
+  .bar-row{display:grid;grid-template-columns:170px 1fr 92px;align-items:center;gap:12px;margin:9px 0;font-size:13.5px}
+  .bar-track{background:var(--bg-soft);border-radius:7px;height:24px;overflow:hidden;border:1px solid var(--line)}
+  .bar-fill{height:100%;border-radius:7px 0 0 7px;display:block}
+  .bar-row .val{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:13px}
+  .bar-row .lab{color:var(--ink);font-weight:600}
+  .bar-row .lab small{display:block;color:var(--muted);font-weight:400;font-size:11.5px}
+
+  /* recommendation spec box */
+  .spec{background:linear-gradient(165deg,#fff,#fbf9f5);border:2px solid var(--ink);border-radius:18px;padding:28px 30px;margin:20px 0}
+  .spec h3{margin-top:0}
+  .tier-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
+  .tier{border:1px solid var(--line);border-radius:14px;padding:20px;background:#fff}
+  .tier.pro{border-color:var(--coral);box-shadow:0 0 0 3px var(--coral-soft)}
+  .tier .tname{font-size:13px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  .tier.pro .tname{color:var(--coral)}
+  .tier .price{font-size:28px;font-weight:800;margin:6px 0 2px}
+  .tier .price small{font-size:14px;color:var(--muted);font-weight:600}
+  .tier ul{padding-left:18px;margin:12px 0 0;font-size:13.5px}
+  .tier li{margin:7px 0}
+
+  .src-grid{columns:2;column-gap:30px}
+  .src-grid h4{margin-top:0;break-after:avoid}
+  .src-grid ul{font-size:12.5px;padding-left:18px}
+  .src-grid li{margin:4px 0;break-inside:avoid}
+  .src-grid a{word-break:break-word}
+
+  footer{border-top:1px solid var(--line);padding:26px 0 50px;color:var(--muted);font-size:13px}
+  .tagsrc{font-size:11.5px;color:var(--muted);font-style:italic}
+
+  @media(max-width:760px){
+    .stats{grid-template-columns:1fr 1fr}
+    .tier-grid{grid-template-columns:1fr}
+    .src-grid{columns:1}
+    .bar-row{grid-template-columns:120px 1fr 70px}
+    .card{padding:22px 18px}
+    .lead,h2 .num{padding-left:0}
+    .lead{padding-left:0}
+  }
+  @media print{
+    nav.toc,.progress{display:none}
+    body{background:#fff} .card{box-shadow:none;break-inside:avoid}
+    header.hero{background:#1c1a17!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow"><span class="dot"></span> WheelTodo · Product Strategy</span>
+    <h1>AI APIs &amp; Monetization: a research brief for the team</h1>
+    <p class="sub">What our AI features actually cost, which APIs to use for subtask generation and voice input, how the market prices comparable apps, and a concrete recommendation for how we should charge.</p>
+    <div class="meta-row">
+      <span><b>Prepared</b> 23 June 2026</span>
+      <span><b>Scope</b> LLM + speech-to-text options · market · pricing model</span>
+      <span><b>Status</b> Draft for discussion</span>
+      <span><b>Reading time</b> ~15 min</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc" id="toc">
+  <div class="wrap">
+    <a href="#tldr">TL;DR</a>
+    <a href="#today">1 · Where we stand</a>
+    <a href="#llm">2 · LLM options</a>
+    <a href="#voice">3 · Voice input</a>
+    <a href="#cost">4 · What AI costs us</a>
+    <a href="#market">5 · Market</a>
+    <a href="#money">6 · Monetization</a>
+    <a href="#reco">7 · Recommendation</a>
+    <a href="#sources">Sources</a>
+  </div>
+</nav>
+
+<main>
+<div class="wrap">
+
+  <!-- TLDR -->
+  <section id="tldr">
+    <div class="card">
+      <h2>The short version</h2>
+      <p class="lead" style="padding-left:0">Five findings that should drive the decision.</p>
+      <div class="stats">
+        <div class="stat coral"><div class="big">~$0.16</div><div class="lbl">AI cost per active user / <b>year</b>, once optimized. Even our current premium setup is only ~$1.33.</div></div>
+        <div class="stat teal"><div class="big">$0</div><div class="lbl">Cost of voice transcription if we use on-device speech recognition (iOS/Android native) instead of a cloud API.</div></div>
+        <div class="stat purple"><div class="big">0</div><div class="lbl">Competitors found using the "spin a wheel to pick your task" mechanic. It's our uncontested wedge.</div></div>
+        <div class="stat amber"><div class="big">~2–4%</div><div class="lbl">Typical freemium free→paid conversion. Hard paywalls hit ~10%, but cap reach. Productivity is ~77% monthly.</div></div>
+      </div>
+      <div class="callout green">
+        <span class="tag">Headline recommendation</span>
+        <p><strong>Gate AI for conversion value, not cost recovery.</strong> Our AI is astonishingly cheap to run — less than 1% of revenue even at scale — so the free tier can be generous. Monetize the <em>bundle</em> (wheel + gamification + rest mode + unlimited AI) with a <strong>freemium subscription at ~$4.99/mo or ~$29.99/yr</strong>, lead with monthly, keep a small free AI allowance, and treat ads as (at most) an optional "watch-to-refill" nudge. Don't try to paywall AI subtask-breakdown alone — Goblin Tools gives that away free.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 WHERE WE STAND -->
+  <section id="today">
+    <div class="card">
+      <h2><span class="num">1</span>Where WheelTodo stands today</h2>
+      <p class="lead">We already ship three AI features as Supabase Edge Functions. Two of them use a premium model for a job a cheap one could do, and the "voice input" feature is missing its most important half.</p>
+
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Edge function</th><th>What it does</th><th>Model today</th><th>Verdict</th></tr></thead>
+          <tbody>
+            <tr><td><code>break-task</code></td><td>Breaks a task into 3–6 subtasks, returns strict JSON</td><td>claude-sonnet-4-6</td><td><span class="pill warn">Over-specced</span> trivial task on a flagship model</td></tr>
+            <tr><td><code>voice-tasks</code></td><td>Extracts tasks from a voice-note <em>transcript</em></td><td>claude-sonnet-4-6</td><td><span class="pill warn">Over-specced</span> + needs an STT layer in front</td></tr>
+            <tr><td><code>suggest-category</code></td><td>Classifies a task into one label (few-shot)</td><td>claude-haiku-4-5</td><td><span class="pill free">Right-sized</span> Haiku + 32 max tokens</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout">
+        <span class="tag">⚠ The real gap in "voice input"</span>
+        <p>Our <code>voice-tasks</code> function takes a <strong>text transcript</strong> as input — it does not convert speech to text. The audio → transcript step (the hard part of "voice input") <strong>does not exist yet.</strong> Section 3 is about closing that gap, and the good news is it can be done for <strong>$0</strong>.</p>
+      </div>
+
+      <p>Other relevant facts about the current build: all task/streak/history data lives in <code>localStorage</code>/<code>AsyncStorage</code>; Supabase is used <strong>only for auth</strong>. There are <strong>no subscription or entitlement tables yet</strong> — monetization infrastructure is greenfield, which means we get to design it correctly from the start (likely via RevenueCat, already floated in <code>IDEAS.md</code>).</p>
+    </div>
+  </section>
+
+  <!-- 2 LLM -->
+  <section id="llm">
+    <div class="card">
+      <h2><span class="num">2</span>LLM options for subtask generation</h2>
+      <p class="lead">Breaking a task into subtasks (and extracting tasks from a transcript) is a short, low-context, strict-JSON job — ~200–500 input tokens, ≤512 output. This is the <em>easiest</em> class of LLM task. We're paying flagship prices for it.</p>
+
+      <h3>Current pricing of the relevant models</h3>
+      <p class="tagsrc">Prices per 1M tokens, gathered June 2026 against official pricing pages. Provider lineups shift often — re-verify model names/prices at build time.</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Model</th><th class="n">Input /1M</th><th class="n">Output /1M</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Claude Sonnet 4.6 <span class="pill warn">we use this</span></td><td class="n">$3.00</td><td class="n">$15.00</td><td>Flagship-tier. Overkill for this task.</td></tr>
+            <tr><td>Claude Opus 4.8</td><td class="n">$5.00</td><td class="n">$25.00</td><td>Most capable; never needed here.</td></tr>
+            <tr class="best"><td>Claude Haiku 4.5 <span class="pill free">easy win</span></td><td class="n">$1.00</td><td class="n">$5.00</td><td>Stay in Anthropic, 3× cheaper, same code path.</td></tr>
+            <tr class="best"><td>Google Gemini 2.5 Flash-Lite <span class="pill free">cheapest</span></td><td class="n">$0.10</td><td class="n">$0.40</td><td>~37× cheaper than Sonnet. Has a <strong>free tier</strong> (~1,500 req/day, Google AI Studio).</td></tr>
+            <tr><td>OpenAI nano-tier*</td><td class="n">~$0.20</td><td class="n">~$1.25</td><td>~12× cheaper. Attractive if we also use OpenAI for STT (one vendor).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tagsrc">* At research time the cheapest OpenAI model was a "nano" tier (the GPT-4o/4.1 names were retired in early 2026). Exact current model name should be confirmed — the <em>capability class</em> (cheapest small model) is what matters, not the version number.</p>
+
+      <h3>Cost per subtask-breakdown call</h3>
+      <p>For a representative call (~150 input + 250 output tokens), here's what one breakdown costs on each model — relative to our current Sonnet bill:</p>
+      <div class="bars">
+        <div class="bar-row"><span class="lab">Sonnet 4.6 <small>current</small></span><span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--coral)"></span></span><span class="val">0.420¢</span></div>
+        <div class="bar-row"><span class="lab">Haiku 4.5 <small>in-ecosystem</small></span><span class="bar-track"><span class="bar-fill" style="width:33%;background:var(--amber)"></span></span><span class="val">0.140¢</span></div>
+        <div class="bar-row"><span class="lab">OpenAI nano <small>cross-vendor</small></span><span class="bar-track"><span class="bar-fill" style="width:8.1%;background:var(--teal)"></span></span><span class="val">0.034¢</span></div>
+        <div class="bar-row"><span class="lab">Gemini Flash-Lite <small>cheapest</small></span><span class="bar-track"><span class="bar-fill" style="width:2.7%;background:var(--green)"></span></span><span class="val">0.012¢</span></div>
+      </div>
+
+      <div class="callout teal">
+        <span class="tag">Recommendation</span>
+        <p><strong>Move <code>break-task</code> and <code>voice-tasks</code> off Sonnet.</strong> The pragmatic first step is <strong>Haiku 4.5</strong> — a one-line model-string change, 3× cheaper, no new vendor, and our <code>suggest-category</code> function already proves Haiku is reliable for this. If we want to drive AI COGS to near-zero (and possibly free via the free tier), <strong>Gemini 2.5 Flash-Lite</strong> is ~37× cheaper than Sonnet; use its JSON-schema mode to guarantee valid output. Keep Sonnet/Opus only if we later add a genuinely hard feature (e.g. multi-step planning). Quality risk is low — these are short, well-constrained JSON tasks.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 VOICE -->
+  <section id="voice">
+    <div class="card">
+      <h2><span class="num">3</span>Voice input — closing the speech-to-text gap</h2>
+      <p class="lead">"Voice input" needs two steps: <strong>audio → transcript</strong> (STT, which we haven't built) then <strong>transcript → tasks</strong> (which we have). For short voice notes, the first step can be free.</p>
+
+      <h3>The free path: on-device speech recognition</h3>
+      <p>Both mobile OSes ship a speech recognizer we can call for <strong>$0</strong>, no API key, often offline:</p>
+      <ul>
+        <li><strong>Mobile (Expo/React Native):</strong> use <code>expo-speech-recognition</code> (or <code>@react-native-voice/voice</code>) to reach iOS <code>SFSpeechRecognizer</code> and Android <code>SpeechRecognizer</code>. On-device transcription works on <strong>iOS 17+</strong> and <strong>Android 13+</strong> (Android needs a one-time offline-model download). Cost: zero.</li>
+        <li><strong>Web (Next.js):</strong> the browser <strong>Web Speech API</strong> (<code>SpeechRecognition</code>) is free in Chrome/Edge/Safari. Caveat: it streams audio to Google/Apple servers (not truly offline) and sessions auto-end ~60s — fine for short notes, but handle the restart/<code>no-speech</code> cases.</li>
+      </ul>
+      <p class="tagsrc">Caveats: native STT quality varies by device, OS version, and noise; very short single-word utterances recognize poorly; Android emulators are unreliable (test on real devices). So we want a cloud fallback when the native path is unavailable or returns low confidence.</p>
+
+      <h3>Cloud STT fallback — all under 1¢ per note</h3>
+      <p class="tagsrc">Per-minute list prices, June 2026. "Per note" assumes a 30-second voice note.</p>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Provider / model</th><th class="n">$ / min</th><th class="n">~ / 30s note</th><th>Accuracy &amp; notes</th></tr></thead>
+          <tbody>
+            <tr class="best"><td>OpenAI gpt-4o-mini-transcribe</td><td class="n">$0.003</td><td class="n">0.15¢</td><td>~4.5% WER. Same vendor as our LLM step = one bill.</td></tr>
+            <tr><td>Deepgram Nova-3</td><td class="n">$0.0043</td><td class="n">0.22¢</td><td>~5.2% WER. Fastest; billed per-second.</td></tr>
+            <tr><td>AssemblyAI Universal</td><td class="n">$0.0025–0.0035</td><td class="n">~0.13–0.18¢</td><td>Cheapest async base rate; add-ons cost extra.</td></tr>
+            <tr><td>ElevenLabs Scribe v2</td><td class="n">~$0.0037</td><td class="n">~0.18¢</td><td><strong>~2.2% WER — accuracy leader</strong> if transcription quality ever bottlenecks us.</td></tr>
+            <tr><td>OpenAI gpt-4o-transcribe / whisper-1</td><td class="n">$0.006</td><td class="n">0.30¢</td><td>Higher accuracy tier / legacy Whisper.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tagsrc">WER = word error rate, on clean-audio benchmarks; real phone-recorded notes will be worse for every provider. Azure (5 free hours/month forever) and Google Chirp also exist but their interactive (real-time) tiers are pricier.</p>
+
+      <div class="callout teal">
+        <span class="tag">Recommendation</span>
+        <p><strong>Hybrid: native STT first, cheap cloud fallback.</strong> Default to on-device recognition (free) on both mobile and web — for short notes on modern devices it's good enough and costs nothing, so voice can be a generous free-tier hook. Fall back to <strong>OpenAI gpt-4o-mini-transcribe</strong> (~0.15¢/note, and it consolidates billing if we also run the LLM step on OpenAI) when native is unavailable or low-confidence. Reach for <strong>ElevenLabs Scribe</strong> only if accuracy becomes the product's limiting factor.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 COST -->
+  <section id="cost">
+    <div class="card">
+      <h2><span class="num">4</span>What AI actually costs us</h2>
+      <p class="lead">This is the most important section for the pricing debate, because it overturns the usual assumption that "AI features are expensive, so we must charge to cover them."</p>
+
+      <p>Modelling a moderately active user at <strong>8 subtask breakdowns + 12 voice notes + 40 auto-category calls per month</strong> <span class="tagsrc">[estimate — adjust once we have real usage telemetry]</span>:</p>
+
+      <div class="bars">
+        <div class="bar-row"><span class="lab">Current stack <small>Sonnet + cloud STT</small></span><span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--coral)"></span></span><span class="val">$1.33/yr</span></div>
+        <div class="bar-row"><span class="lab">Optimized <small>Flash-Lite + native STT</small></span><span class="bar-track"><span class="bar-fill" style="width:12%;background:var(--green)"></span></span><span class="val">$0.16/yr</span></div>
+      </div>
+
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Scenario</th><th class="n">Per user / mo</th><th class="n">Per user / yr</th><th class="n">At 10,000 active users</th><th class="n">% of $30/yr sub</th></tr></thead>
+          <tbody>
+            <tr><td>Current (Sonnet text, cloud STT)</td><td class="n">11.1¢</td><td class="n">$1.33</td><td class="n">~$13,300 / yr</td><td class="n">4.4%</td></tr>
+            <tr class="best"><td>Optimized (Flash-Lite text, native STT)</td><td class="n">1.3¢</td><td class="n">$0.16</td><td class="n">~$1,600 / yr</td><td class="n">0.5%</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout green">
+        <span class="tag">The key insight</span>
+        <p>Even <em>before</em> optimizing, AI is <strong>~4% of a subscription's revenue</strong>; optimized, it's <strong>well under 1%</strong>. The only real cost risk is <strong>abuse</strong> (someone scripting thousands of calls) — not normal usage. That means: (1) the free tier can afford to be generous, which is great for acquisition; (2) a free-tier cap exists to stop abuse and create an upgrade nudge, <em>not</em> to recover cost; and (3) native voice STT removes the one usage-scaling cloud cost entirely.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 MARKET -->
+  <section id="market">
+    <div class="card">
+      <h2><span class="num">5</span>Market landscape</h2>
+      <p class="lead">WheelTodo's gamified, rest-friendly, task-initiation angle sits squarely in the fastest-growing corner of productivity: the ADHD / neurodivergent niche. The AI features, though, are already commoditized.</p>
+
+      <h3>Market size &amp; momentum</h3>
+      <div class="bars">
+        <div class="bar-row"><span class="lab">AI productivity tools <small>~25% CAGR</small></span><span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--purple)"></span></span><span class="val">$17.0B</span></div>
+        <div class="bar-row"><span class="lab">Productivity apps <small>~10% CAGR</small></span><span class="bar-track"><span class="bar-fill" style="width:85%;background:var(--teal)"></span></span><span class="val">~$14.5B</span></div>
+        <div class="bar-row"><span class="lab">Task-management sw <small>~15.6% CAGR</small></span><span class="bar-track"><span class="bar-fill" style="width:23%;background:var(--coral)"></span></span><span class="val">$3.94B</span></div>
+        <div class="bar-row"><span class="lab">ADHD apps <small>~12–17% CAGR</small></span><span class="bar-track"><span class="bar-fill" style="width:12%;background:var(--amber)"></span></span><span class="val">~$2B</span></div>
+      </div>
+      <p class="tagsrc">2025–2026 figures; market-sizing reports vary widely by definition, so treat as directional. Sources: Grand View, Fortune Business Insights, The Business Research Company (see Sources). The ADHD-app segment is the standout: double-digit CAGR, &gt;11M US downloads in 2024, and &gt;$500M raised across 65+ funding rounds. Sensor Tower notes overall downloads dipped ~1% in 2024 while <em>revenue</em> grew — the market is monetizing engaged users harder, which favors subscriptions over pure growth bets.</p>
+
+      <h3>How comparable apps charge</h3>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>App</th><th>Free?</th><th class="n">Monthly</th><th class="n">Annual</th><th>AI / what's gated</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Goblin Tools</strong> (ADHD) <span class="pill warn">key comparator</span></td><td><span class="pill free">Yes</span></td><td class="n">—</td><td class="n">~$3.99 once</td><td><strong>AI task breakdown is FREE on web.</strong> This is why we can't paywall subtasks alone.</td></tr>
+            <tr><td><strong>Todoist</strong></td><td><span class="pill free">Yes</span></td><td class="n">$7</td><td class="n">~$48 ($5/mo)</td><td>AI Assist + <strong>Ramble voice→task</strong>; free users get 10 voice sessions/mo.</td></tr>
+            <tr><td>TickTick</td><td><span class="pill free">Yes</span></td><td class="n">$5.99</td><td class="n">$35.99</td><td>Calendar, habits, Pomodoro. No marquee AI.</td></tr>
+            <tr><td>Routinery (ADHD)</td><td><span class="pill free">Yes</span></td><td class="n">$3.99</td><td class="n">$27.49</td><td>Forbes "Best ADHD App" 2025. Routines/templates.</td></tr>
+            <tr><td>Habitica (gamified RPG)</td><td><span class="pill free">Yes</span></td><td class="n">$4.99</td><td class="n">$47.99</td><td>Sub is <strong>cosmetic only</strong> — features stay free.</td></tr>
+            <tr><td>Finch (self-care pet)</td><td><span class="pill free">Yes</span></td><td class="n">$9.99</td><td class="n">$69.99</td><td>Gamified pet; loyalty discounts for streaks.</td></tr>
+            <tr><td>Tiimo (ADHD)</td><td><span class="pill free">Yes</span></td><td class="n">~$7–12</td><td class="n">~$54.99</td><td>Apple iPhone App of the Year 2025. AI checklists.</td></tr>
+            <tr><td>Structured</td><td><span class="pill free">Yes</span></td><td class="n">$4.99</td><td class="n">$29.99*</td><td>AI day-planning (paid). *Also a $29.99 one-time option.</td></tr>
+            <tr><td>Motion / Sunsama / Akiflow <small>(pro)</small></td><td><span class="pill paid">No</span></td><td class="n">$25–49</td><td class="n">$240–348</td><td>AI auto-scheduling for professionals. <strong>Not our band.</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tagsrc">Prices verified June 2026 where possible; Llama Life and Numo prices could not be confirmed and are omitted. Pro time-blockers shown for contrast only.</p>
+
+      <div class="callout purple">
+        <span class="tag">Positioning read</span>
+        <p><strong>Our wheel mechanic is uncontested</strong> — no researched competitor uses a randomized spinner to pick the next task, and it maps perfectly to ADHD task-initiation paralysis. That's the wedge. But <strong>the AI features are not differentiators</strong>: subtask breakdown is free at Goblin Tools, and voice capture is sliding into free tiers (Todoist Ramble). So: lead the story with <em>the wheel + gamification + guilt-free rest mode</em>, use AI as a delight/retention layer, and price in the <strong>consumer ADHD/gamified band of ~$25–70/yr</strong> — not the $250–350/yr pro band.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 MONEY -->
+  <section id="money">
+    <div class="card">
+      <h2><span class="num">6</span>Monetization: what the benchmarks say</h2>
+      <p class="lead">Concrete numbers from RevenueCat's State of Subscription Apps and related 2025–2026 sources, translated into what they mean for us.</p>
+
+      <h3>Subscription vs. the alternatives</h3>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Model</th><th>Benchmark</th><th>Fit for WheelTodo</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Freemium subscription</strong></td><td>~2–4% free→paid; productivity is <strong>~77% monthly</strong>; AI apps earn ~41% higher Year-1 LTV but churn ~36% worse</td><td><span class="pill free">Primary</span> Best fit. Our gamification/streaks defend the higher AI churn.</td></tr>
+            <tr><td>Hard paywall</td><td>~10–12% conversion (≈5× freemium per-download) but caps reach</td><td><span class="pill warn">Maybe later</span> Only with high-intent paid traffic. Risky for an indie launch.</td></tr>
+            <tr><td>Metered AI / credits</td><td>Notion: $10 per 1,000 credits, monthly reset, no rollover; ChatGPT free: ~10 msgs/5h then degrade</td><td><span class="pill free">Layer on top</span> Use as the free-tier cap mechanism, not the whole model.</td></tr>
+            <tr><td>One-time purchase</td><td>Goblin Tools / Forest / Things model (~$2–50 once)</td><td><span class="pill warn">Optional</span> A cheap "supporter" unlock fits the ADHD-indie ethos.</td></tr>
+            <tr><td>Ads</td><td>Utility ARPDAU is <strong>below hyper-casual's ~$0.05</strong>; one subscriber ≈ thousands of ad-days</td><td><span class="pill paid">Avoid as base</span> At most optional rewarded "watch-to-refill."</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Funnel &amp; pricing patterns that work in 2026</h3>
+      <ul>
+        <li><strong>Onboarding paywall</strong> (shown during first-run, with a trial) is the highest-converting placement — ~1.35% download→paid on average.</li>
+        <li><strong>Three options</strong> on the paywall (monthly / annual / free-continue) is the optimal default.</li>
+        <li><strong>Lead with monthly</strong> — productivity users resist annual lock-in (77% choose monthly) — but offer annual at <strong>~40–50% off</strong> the monthly run-rate to capture committers.</li>
+        <li><strong>Free trials:</strong> longer trials (2–4 weeks) convert far better (~42–46%) than 3-day trials (~25%), but 3-day trials see ~55% cancel on day 0. If we trial, trial the <em>annual</em> plan.</li>
+      </ul>
+
+      <div class="callout amber">
+        <span class="tag">Honest caveats on these numbers</span>
+        <p>The exact <em>productivity-vertical</em> free→paid % and LTV medians sit behind RevenueCat's paid report, so the 2–4% range is the cross-category baseline. There is no clean published utility-app ARPDAU benchmark (the "below $0.05" is inferred). And the annual-discount norm (40–50%) is a design convention, not a single cited statistic. Treat these as direction, not gospel.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 RECO -->
+  <section id="reco">
+    <div class="card">
+      <h2><span class="num">7</span>Recommendation &amp; next steps</h2>
+      <p class="lead">A concrete proposal we can argue about. Numbers are starting points, not commitments.</p>
+
+      <div class="spec">
+        <h3>Proposed model: generous freemium + thin AI cap</h3>
+        <div class="tier-grid">
+          <div class="tier">
+            <div class="tname">WheelTodo Free</div>
+            <div class="price">$0</div>
+            <ul>
+              <li>Full core app: wheel, tasks, streaks, achievements, Pomodoro, rest mode</li>
+              <li><strong>Voice capture: unlimited</strong> (native STT is free to us — make it a hook)</li>
+              <li>AI subtask breakdown: <strong>~10 / month</strong>, then a soft prompt to upgrade (or watch-to-refill)</li>
+              <li>Default themes; standard rest categories</li>
+            </ul>
+          </div>
+          <div class="tier pro">
+            <div class="tname">WheelTodo Plus</div>
+            <div class="price">$4.99<small> /mo</small></div>
+            <ul>
+              <li><strong>Unlimited AI</strong> subtask breakdown &amp; voice→tasks</li>
+              <li>Custom rest categories, mood &amp; focus trends, wheel bias</li>
+              <li>Extra themes, widgets, weekly "coach" summary</li>
+              <li>Annual: <strong>~$29.99/yr</strong> (50% off) · optional one-time "Supporter" unlock</li>
+            </ul>
+          </div>
+        </div>
+        <p style="margin-bottom:0"><strong>Why this shape:</strong> the wheel + gamification are the paid story; AI is a delight feature with a thin cap that exists for abuse-control and upgrade nudging (not cost — AI is &lt;1% of revenue). Voice stays unlimited and free because native STT costs us nothing and it's a superb low-friction ADHD acquisition hook. Pricing sits in the proven $25–70/yr consumer-ADHD band, monthly-led per the benchmarks.</p>
+      </div>
+
+      <h3>Build sequence</h3>
+      <ol>
+        <li><strong>Cut AI COGS now (1 line):</strong> switch <code>break-task</code> and <code>voice-tasks</code> from Sonnet 4.6 → Haiku 4.5. Optionally pilot Gemini Flash-Lite for near-zero cost.</li>
+        <li><strong>Build the STT layer:</strong> on-device speech recognition (mobile + web), with an OpenAI <code>gpt-4o-mini-transcribe</code> fallback. This is what makes "voice input" actually exist.</li>
+        <li><strong>Add entitlement infra:</strong> RevenueCat + a Supabase entitlements/usage table (none exists today). Meter AI actions per user/month.</li>
+        <li><strong>Ship the paywall:</strong> onboarding placement, 3 options, monthly-led, annual at ~50% off, short trial on annual.</li>
+        <li><strong>Instrument, then tune:</strong> our cost model uses assumed usage — replace it with real telemetry and re-set the free cap and price from data.</li>
+      </ol>
+
+      <div class="callout">
+        <span class="tag">Open questions for the team</span>
+        <p>(1) Is the free AI cap 10/month or should voice-everything be free and only subtask-AI capped? (2) Do we want a one-time "Supporter" unlock alongside the subscription (ADHD-indie goodwill) or keep it subscription-only? (3) Launch price: hold $4.99/mo or test $5.99? (4) Are we comfortable adding Google/OpenAI as a second AI vendor, or stay all-Anthropic on Haiku for simplicity?</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOURCES -->
+  <section id="sources">
+    <div class="card">
+      <h2>Sources</h2>
+      <p class="lead">Gathered via web research, June 2026, prioritizing official pricing pages and primary reports. Re-verify prices before relying on them — provider lineups change frequently.</p>
+      <div class="src-grid">
+        <h4>LLM pricing</h4>
+        <ul>
+          <li><a href="https://platform.claude.com/docs/en/about-claude/pricing">Anthropic — pricing</a></li>
+          <li><a href="https://developers.openai.com/api/docs/pricing">OpenAI — API pricing</a></li>
+          <li><a href="https://ai.google.dev/gemini-api/docs/pricing">Google — Gemini API pricing</a></li>
+          <li><a href="https://ai.google.dev/gemini-api/docs/rate-limits">Gemini — free-tier rate limits</a></li>
+        </ul>
+        <h4>Speech-to-text</h4>
+        <ul>
+          <li><a href="https://openai.com/api/pricing/">OpenAI — transcription pricing</a></li>
+          <li><a href="https://deepgram.com/pricing">Deepgram — Nova-3 pricing</a></li>
+          <li><a href="https://www.assemblyai.com/pricing">AssemblyAI — pricing</a></li>
+          <li><a href="https://elevenlabs.io/pricing/api">ElevenLabs — Scribe pricing</a></li>
+          <li><a href="https://artificialanalysis.ai/speech-to-text/models/elevenlabs">Artificial Analysis — STT WER benchmark</a></li>
+          <li><a href="https://github.com/jamsch/expo-speech-recognition">expo-speech-recognition (on-device)</a></li>
+          <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API">MDN — Web Speech API</a></li>
+        </ul>
+        <h4>Market size &amp; competitors</h4>
+        <ul>
+          <li><a href="https://www.grandviewresearch.com/industry-analysis/task-management-software-market-report">Grand View — task management market</a></li>
+          <li><a href="https://www.grandviewresearch.com/industry-analysis/adhd-apps-market-report">Grand View — ADHD apps market</a></li>
+          <li><a href="https://www.fortunebusinessinsights.com/productivity-apps-market-110254">Fortune Business Insights — productivity apps</a></li>
+          <li><a href="https://sensortower.com/blog/state-of-mobile-health-and-fitness-in-2025">Sensor Tower — State of Mobile 2025</a></li>
+          <li><a href="https://www.todoist.com/pricing">Todoist pricing</a> · <a href="https://goblin.tools/About">Goblin Tools</a> · <a href="https://habitica.com/pricing">Habitica</a> · <a href="https://www.routinery.app/">Routinery</a> · <a href="https://www.tiimoapp.com/">Tiimo</a></li>
+        </ul>
+        <h4>Monetization benchmarks</h4>
+        <ul>
+          <li><a href="https://www.revenuecat.com/state-of-subscription-apps/">RevenueCat — State of Subscription Apps</a></li>
+          <li><a href="https://www.revenuecat.com/state-of-subscription-apps-2026-productivity/">RevenueCat — Productivity vertical</a></li>
+          <li><a href="https://www.businessofapps.com/data/app-subscription-trial-benchmarks/">Business of Apps — trial benchmarks</a></li>
+          <li><a href="https://www.appsflyer.com/resources/reports/app-marketing-monetization-report/">AppsFlyer — app monetization 2026</a></li>
+          <li><a href="https://adapty.io/blog/high-performing-paywall-2026/">Adapty — high-performing paywalls 2026</a></li>
+          <li><a href="https://www.notion.com/pricing">Notion — AI credits pricing</a></li>
+          <li><a href="https://tenjin.com/blog/ad-monetization-benchmark-report-2025-ecpm-ad-revenue/">Tenjin — ad eCPM benchmarks</a></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p><strong>Methodology &amp; confidence.</strong> Cost figures are computed from our actual edge-function prompts and token limits against June-2026 published API prices [estimate basis: read of <code>supabase/functions/*</code>]. Per-user usage (8 breakdowns / 12 voice / 40 category per month) is an assumption to replace with telemetry. Flagged low-confidence items: productivity-vertical conversion/LTV medians (behind paywalled reports), utility-app ARPDAU (no clean public benchmark), and a few competitor prices (Llama Life, Numo — unverified, omitted). Model version numbers for non-Anthropic providers shift often; the recommendations hold at the capability-class level regardless. Prepared for internal discussion — not a commitment to any price.</p>
+  </footer>
+
+</div>
+</main>
+
+<script>
+(function(){
+  var prog=document.getElementById('progress');
+  var links=[].slice.call(document.querySelectorAll('nav.toc a'));
+  var ids=links.map(function(a){return a.getAttribute('href').slice(1)});
+  var secs=ids.map(function(id){return document.getElementById(id)});
+  function onScroll(){
+    var h=document.documentElement;
+    var sc=h.scrollTop, max=h.scrollHeight-h.clientHeight;
+    prog.style.width=(max>0?(sc/max*100):0)+'%';
+    var cur=0;
+    for(var i=0;i<secs.length;i++){ if(secs[i] && secs[i].getBoundingClientRect().top<120) cur=i; }
+    links.forEach(function(a,i){ a.classList.toggle('active', i===cur); });
+  }
+  document.addEventListener('scroll',onScroll,{passive:true});
+  onScroll();
+})();
+</script>
+</body>
+</html>
