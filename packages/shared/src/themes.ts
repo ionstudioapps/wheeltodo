@@ -53,15 +53,15 @@ export interface Theme {
 export const THEMES: Record<ThemeName, Theme> = {
   'warm-start': {
     name: 'warm-start',
-    label: 'Warm Start',
+    label: 'Gentle Boost',
     dark: false,
     colors: {
-      bgScreen:      '#FAF7F2',
-      bgCard:        '#FFFFFF',
-      bgInput:       '#F5F0EB',
+      bgScreen:      '#F3EEE5',
+      bgCard:        '#FAF6EE',
+      bgInput:       '#ECE5D8',
       textPrimary:   '#2A2520',
-      textSecondary: '#8A7E7A',
-      textMuted:     '#B0A8A4',
+      textSecondary: '#8C8378',
+      textMuted:     '#B4AB9D',
       accent:        '#E59880',
       primary:       '#ADA8CC',
       success:       '#BCD4A5',
@@ -80,15 +80,15 @@ export const THEMES: Record<ThemeName, Theme> = {
 
   'slow-down': {
     name: 'slow-down',
-    label: 'Slow Down',
+    label: 'Grounding',
     dark: true,
     colors: {
-      bgScreen:      '#1C1828',
-      bgCard:        '#26223A',
-      bgInput:       '#302C44',
-      textPrimary:   '#EDE8E3',
-      textSecondary: '#9B8FA0',
-      textMuted:     '#6A6278',
+      bgScreen:      '#272233',
+      bgCard:        '#322C40',
+      bgInput:       '#3A3349',
+      textPrimary:   '#ECE4DB',
+      textSecondary: '#9F96A8',
+      textMuted:     '#6E6678',
       accent:        '#ADA8CC',
       primary:       '#9DC4BC',
       success:       '#8AAE82',
@@ -107,16 +107,16 @@ export const THEMES: Record<ThemeName, Theme> = {
 
   'light-a11y': {
     name: 'light-a11y',
-    label: 'Light (Accessible)',
+    label: 'High Noon',
     dark: false,
     colors: {
       bgScreen:      '#FFFFFF',
-      bgCard:        '#F5F5F5',
-      bgInput:       '#EBEBEB',
-      textPrimary:   '#1A1210',
-      textSecondary: '#4A4040',
-      textMuted:     '#6A6060',
-      accent:        '#B84A30',  // darker coral — passes 4.5:1 on white
+      bgCard:        '#F7F5F1',
+      bgInput:       '#EDEAE4',
+      textPrimary:   '#16130F',
+      textSecondary: '#4A4238',
+      textMuted:     '#6B6258',
+      accent:        '#C0432D',  // darker coral — passes 4.5:1 on white
       primary:       '#5A5498',  // darker lavender — passes 4.5:1 on white
       success:       '#3A7230',  // darker sage
       danger:        '#B84A30',
@@ -134,16 +134,16 @@ export const THEMES: Record<ThemeName, Theme> = {
 
   'dark-a11y': {
     name: 'dark-a11y',
-    label: 'Dark (Accessible)',
+    label: 'Eclipse',
     dark: true,
     colors: {
-      bgScreen:      '#0F0D18',
-      bgCard:        '#1A1830',
-      bgInput:       '#242240',
-      textPrimary:   '#FFFFFF',
-      textSecondary: '#C8C0D8',
-      textMuted:     '#A098B0',
-      accent:        '#F5C4A0',  // light peach — passes 4.5:1 on dark bg
+      bgScreen:      '#141019',
+      bgCard:        '#211C2E',
+      bgInput:       '#2C2640',
+      textPrimary:   '#F6EFE3',
+      textSecondary: '#C4BACA',
+      textMuted:     '#A79DAE',
+      accent:        '#EDB590',  // light peach — passes 4.5:1 on dark bg
       primary:       '#C8C4E8',  // light lavender
       success:       '#A8D898',  // light sage
       danger:        '#F0A898',  // light coral

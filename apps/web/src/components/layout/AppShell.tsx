@@ -1,610 +1,182 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { RotateCcw, ListTodo, Moon, BarChart2, LogOut, User, X, Flame, Minus, Plus, Trophy, Clock, Zap, Check } from "lucide-react";
-import { getSupabaseClient, THEMES, type ThemeName } from "@todo/shared";
+import { type ReactNode } from "react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
-import { useApp, type RestGoalTier, REST_GOAL_MINUTES } from "@/context/AppContext";
-import { ACHIEVEMENT_DEFS, getUnlockedTierIds } from "@/utils/achievements";
+import { useApp } from "@/context/AppContext";
+import { WIcon, WheelMark } from "@/components/ui/kit";
 
-export type TabId = "spin" | "tasks" | "rest" | "history";
-
-const NAV_ITEMS: {
-  id: TabId;
-  label: string;
-  Icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string; style?: React.CSSProperties }>;
-}[] = [
-  { id: "spin",    label: "Spin",    Icon: RotateCcw },
-  { id: "tasks",   label: "Tasks",   Icon: ListTodo  },
-  { id: "rest",    label: "Rest",    Icon: Moon      },
-  { id: "history", label: "History", Icon: BarChart2 },
-];
+export type TabId = "tasks" | "habits" | "you";
 
 interface AppShellProps {
   children: ReactNode;
   user: SupabaseUser | null;
   activeTab: TabId;
   setActiveTab: (tab: TabId) => void;
+  onAddTask: () => void;
   onSignOut: () => void;
 }
 
-export function AppShell({ children, user, activeTab, setActiveTab, onSignOut }: AppShellProps) {
-  const [profileOpen, setProfileOpen] = useState(false);
-  const { streak } = useApp();
+const NAV_ITEMS: { id: TabId; label: string; icon: string }[] = [
+  { id: "tasks", label: "Tasks", icon: "wheelTab" },
+  { id: "habits", label: "Habits", icon: "grid" },
+  { id: "you", label: "You", icon: "user" },
+];
 
-  async function handleSignOut() {
-    try {
-      const supabase = getSupabaseClient();
-      await supabase.auth.signOut();
-    } catch {
-      // ignore if supabase not configured
-    }
-    onSignOut();
-  }
+function userInitials(user: SupabaseUser | null) {
+  const name = (user?.user_metadata?.display_name as string | undefined) ?? user?.email ?? "";
+  const parts = name.split(/[\s@._-]+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase() || "IO";
+}
+
+function displayName(user: SupabaseUser | null) {
+  return (user?.user_metadata?.display_name as string | undefined)
+    ?? user?.email?.split("@")[0]
+    ?? "Maker";
+}
+
+export function AppShell({ children, user, activeTab, setActiveTab, onAddTask }: AppShellProps) {
+  const { streak, tasks, completedTasks } = useApp();
+  const initials = userInitials(user);
+
+  // Tutorial progress (Seed onboarding tasks are seeded with tut_ ids)
+  const tutRemaining = tasks.filter((t) => t.id.startsWith("tut_")).length;
+  const tutDone = new Set(completedTasks.filter((t) => t.taskId.startsWith("tut_")).map((t) => t.taskId)).size;
+  const tutActive = tutRemaining > 0 && tutDone < 5;
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-screen)' }}>
-      {/* ── Desktop sidebar ─────────────────────────────── */}
-      <aside className="hidden md:flex flex-col w-56 shrink-0" style={{ background: 'var(--bg-card)', borderRight: '1px solid var(--border)' }}>
-        {/* Brand */}
-        <div className="px-5 pt-6 pb-5" style={{ borderBottom: '1px solid var(--border)' }}>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base select-none" style={{ background: 'var(--bg-screen)' }}>
-              ◎
-            </div>
-            <span className="font-bold text-base tracking-tight" style={{ color: 'var(--text-primary)' }}>Wheel Todo</span>
-          </div>
+    <div id="app" style={{ display: "flex", height: "100dvh", background: "var(--bg-screen)", color: "var(--text-primary)", overflow: "hidden" }}>
+
+      {/* ── Desktop sidebar ─────────────────────────────────── */}
+      <aside className="wt-desktop-only" style={{
+        width: 214, flexShrink: 0, background: "var(--bg-card)",
+        borderRight: "1px solid var(--border-hairline)",
+        display: "flex", flexDirection: "column", padding: "28px 0 22px",
+      }}>
+        <div style={{ padding: "0 20px 26px", display: "flex", alignItems: "center", gap: 9 }}>
+          <span style={{ width: 30, height: 30, borderRadius: 9, background: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <WIcon name="wheelTab" size={16} color="var(--text-on-ink)" stroke={2.2} />
+          </span>
+          <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em" }}>WheelToDo</span>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {NAV_ITEMS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors"
-              style={{
-                background: activeTab === id ? 'var(--bg-screen)' : 'transparent',
-                color: activeTab === id ? 'var(--text-primary)' : 'var(--text-muted)',
-              }}
-            >
-              <Icon size={17} strokeWidth={activeTab === id ? 2.2 : 1.8} />
-              {label}
-            </button>
-          ))}
-          {/* Streak badge */}
-          {streak > 0 && (
-            <button
-              onClick={() => setActiveTab("history")}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-              style={{ color: 'var(--accent)' }}
-            >
-              <Flame size={17} strokeWidth={2} />
-              {streak}-day streak
-            </button>
-          )}
+        <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, padding: "0 10px" }}>
+          {NAV_ITEMS.map(({ id, label, icon }) => {
+            const on = activeTab === id;
+            return (
+              <button key={id} onClick={() => setActiveTab(id)} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12,
+                cursor: "pointer", border: "none", textAlign: "left", width: "100%",
+                background: on ? "var(--bg-screen)" : "transparent",
+                color: on ? "var(--text-primary)" : "var(--text-secondary)",
+                fontSize: 14, fontWeight: on ? 600 : 500,
+                transition: "background 100ms ease, color 100ms ease",
+              }}>
+                <WIcon name={icon} size={17} stroke={1.8} />
+                {label}
+              </button>
+            );
+          })}
         </nav>
 
-        {/* User footer */}
-        <div className="px-3 py-4" style={{ borderTop: '1px solid var(--border)' }}>
-          <button
-            onClick={() => setProfileOpen(true)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: 'var(--bg-screen)' }}>
-              <User size={14} strokeWidth={1.8} />
+        {tutActive && (
+          <div style={{ padding: "0 12px 14px" }}>
+            <div style={{ background: "var(--c-coral-soft)", borderRadius: 14, padding: "11px 13px" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 7, letterSpacing: "0.06em" }}>
+                TUTORIAL · {tutDone}/5
+              </div>
+              <div style={{ height: 3, borderRadius: 99, background: "var(--bg-overlay)", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${(tutDone / 5) * 100}%`, background: "var(--accent)", borderRadius: 99 }} />
+              </div>
             </div>
-            <span className="truncate flex-1 text-left text-xs">
-              {user?.email ?? "Account"}
+          </div>
+        )}
+
+        <div style={{ padding: "0 10px" }}>
+          <button onClick={() => setActiveTab("you")} style={{
+            display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12,
+            cursor: "pointer", border: "none", background: "transparent", width: "100%", textAlign: "left",
+          }}>
+            <span style={{ width: 30, height: 30, borderRadius: 999, background: "var(--c-lavender)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--text-on-ink)", flexShrink: 0 }}>
+              {initials}
+            </span>
+            <span style={{ fontSize: 13.5, fontWeight: 500, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {displayName(user)}
             </span>
           </button>
         </div>
       </aside>
 
-      {/* ── Main content area ─────────────────────────────── */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Mobile header */}
-        <header className="md:hidden flex items-center justify-between px-4 pt-4 pb-2 shrink-0" style={{ background: 'var(--bg-screen)' }}>
-          <div className="flex items-center gap-2">
-            <span className="text-base select-none">◎</span>
-            <span className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Wheel Todo</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {streak > 0 && (
-              <button
-                onClick={() => setActiveTab("history")}
-                className="flex items-center gap-1 rounded-full px-2.5 py-1"
-                style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
-              >
-                <Flame size={12} strokeWidth={2} style={{ color: 'var(--accent)' }} />
-                <span className="text-xs font-bold" style={{ color: 'var(--accent)' }}>{streak}</span>
-              </button>
-            )}
-            <button
-              onClick={() => setProfileOpen(true)}
-              className="w-8 h-8 rounded-full flex items-center justify-center"
-              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
-            >
-              <User size={14} strokeWidth={1.8} style={{ color: 'var(--text-muted)' }} />
+      {/* ── Main column ─────────────────────────────────────── */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", position: "relative" }}>
+
+        {/* Mobile top bar */}
+        <header className="wt-mobile-only" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 22px 4px", flexShrink: 0 }}>
+          <button
+            onClick={() => setActiveTab("habits")}
+            aria-label="View streak"
+            style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", fontSize: 15, fontWeight: 500, color: "var(--text-secondary)", padding: 0 }}
+          >
+            <WIcon name="flame" size={18} color="var(--accent)" />
+            <span style={{ color: "var(--text-primary)", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{streak}</span>
+          </button>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <button onClick={onAddTask} aria-label="Add task" className="wt-press" style={{ width: 42, height: 42, border: 0, background: "transparent", borderRadius: 999, color: "var(--text-primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <WIcon name="plus" size={22} />
             </button>
-          </div>
+            <button onClick={() => setActiveTab("you")} aria-label="Profile" className="wt-press" style={{
+              width: 42, height: 42, borderRadius: 999, background: "var(--c-lavender)", color: "var(--text-on-ink)",
+              border: "none", display: "inline-flex", alignItems: "center", justifyContent: "center",
+              fontSize: 14, fontWeight: 600, cursor: "pointer",
+              boxShadow: "inset 0 0 0 3px var(--bg-screen), 0 0 0 1px var(--c-lavender)",
+            }}>
+              {initials}
+            </button>
+          </span>
         </header>
 
-        {/* Page */}
-        <div className="flex-1 overflow-y-auto">
-          {children}
-        </div>
-
-        {/* ── Mobile bottom nav ──────────────────────────── */}
-        <nav className="md:hidden flex shrink-0 safe-area-bottom" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-          {NAV_ITEMS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className="flex-1 flex flex-col items-center gap-1 py-3 transition-colors"
-            >
-              <Icon
-                size={20}
-                strokeWidth={activeTab === id ? 2.2 : 1.8}
-                style={{ color: activeTab === id ? 'var(--accent)' : 'var(--text-muted)' }}
-              />
-              <span
-                className="text-[10px] font-semibold"
-                style={{ color: activeTab === id ? 'var(--accent)' : 'var(--text-muted)' }}
-              >
-                {label}
-              </span>
-            </button>
-          ))}
-        </nav>
-      </main>
-
-      {/* ── Profile modal ─────────────────────────────── */}
-      {profileOpen && (
-        <ProfileModal user={user} onClose={() => setProfileOpen(false)} onSignOut={handleSignOut} />
-      )}
-    </div>
-  );
-}
-
-// ─── Stepper helper ───────────────────────────────────────────────────────────
-
-function Stepper({ value, min, max, step = 1, onChange, format }: {
-  value: number; min: number; max: number; step?: number;
-  onChange: (v: number) => void; format?: (v: number) => string;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={() => onChange(Math.max(min, value - step))}
-        disabled={value <= min}
-        className="w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-30 transition-colors"
-        style={{ background: 'var(--bg-screen)' }}
-      >
-        <Minus size={14} strokeWidth={2.5} />
-      </button>
-      <span className="w-14 text-center text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-        {format ? format(value) : value}
-      </span>
-      <button
-        type="button"
-        onClick={() => onChange(Math.min(max, value + step))}
-        disabled={value >= max}
-        className="w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-30 transition-colors"
-        style={{ background: 'var(--bg-screen)' }}
-      >
-        <Plus size={14} strokeWidth={2.5} />
-      </button>
-    </div>
-  );
-}
-
-// ─── Profile modal ────────────────────────────────────────────────────────────
-
-interface ProfileModalProps {
-  user: SupabaseUser | null;
-  onClose: () => void;
-  onSignOut: () => void;
-}
-
-const TIMER_STEPS = [5, 10, 15, 20, 25, 30, 45, 60, 90, 120];
-
-type LucideIconComp = React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
-
-const ACHIEVEMENT_ICON_MAP: Record<string, LucideIconComp> = {
-  Flame: Flame,
-  Trophy: Trophy,
-  Clock: Clock,
-  Zap: Zap,
-  Moon: Moon,
-  RotateCcw: RotateCcw,
-};
-
-const REST_TIERS: { id: RestGoalTier; label: string; description: string }[] = [
-  { id: "easy",       label: "Easy",       description: `${REST_GOAL_MINUTES.easy} min`      },
-  { id: "standard",   label: "Standard",   description: `${REST_GOAL_MINUTES.standard} min`  },
-  { id: "dedicated",  label: "Dedicated",  description: `${REST_GOAL_MINUTES.dedicated} min` },
-];
-
-function ProfileModal({ user, onClose, onSignOut }: ProfileModalProps) {
-  const {
-    dailyGoal, setDailyGoal,
-    defaultTimerMinutes, setDefaultTimerMinutes,
-    restGoalTier, setRestGoalTier,
-    categories, addCategory, removeCategory,
-    completedTasks,
-    achievementValues,
-    theme, setTheme,
-  } = useApp();
-
-  const unlockedIds = getUnlockedTierIds(achievementValues);
-
-  const [tab, setTab] = useState<"account" | "settings">("account");
-  const [displayName, setDisplayName] = useState(
-    (user?.user_metadata?.display_name as string | undefined) ?? ""
-  );
-  const [newPassword, setNewPassword] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [newCat, setNewCat] = useState("");
-
-  const totalHours = completedTasks.reduce((s, t) => s + t.minutesActual, 0) / 60;
-  const onTimePct = completedTasks.length > 0
-    ? Math.round((completedTasks.filter((t) => t.minutesActual <= t.minutesEstimated).length / completedTasks.length) * 100)
-    : 0;
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setMessage(null);
-    try {
-      const supabase = getSupabaseClient();
-      const updates: Parameters<typeof supabase.auth.updateUser>[0] = {};
-      if (displayName.trim()) updates.data = { display_name: displayName.trim() };
-      if (newPassword.length >= 6) updates.password = newPassword;
-      if (!updates.data && !updates.password) { setMessage("No changes to save."); return; }
-      const { error } = await supabase.auth.updateUser(updates);
-      if (error) { setMessage(error.message); } else { setMessage("Saved!"); setNewPassword(""); }
-    } catch {
-      setMessage("Something went wrong.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function stepTimer(dir: 1 | -1) {
-    const idx = TIMER_STEPS.indexOf(defaultTimerMinutes);
-    const nextIdx = idx === -1
-      ? (dir === 1 ? 0 : TIMER_STEPS.length - 1)
-      : Math.max(0, Math.min(TIMER_STEPS.length - 1, idx + dir));
-    setDefaultTimerMinutes(TIMER_STEPS[nextIdx]);
-  }
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
-        style={{ background: 'var(--bg-card)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-0">
-          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Profile</h2>
-          <button onClick={onClose} className="transition-colors" style={{ color: 'var(--text-muted)' }}>
-            <X size={18} strokeWidth={2} />
+        {/* Desktop top bar */}
+        <header className="wt-desktop-only" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "28px 52px 0", flexShrink: 0 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px 6px 10px", borderRadius: 9999, background: "var(--c-coral-soft)", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>
+            <WIcon name="flame" size={16} color="var(--accent)" />
+            <span style={{ color: "var(--text-primary)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{streak}</span>
+            <span>day streak</span>
+          </span>
+          <button onClick={onAddTask} aria-label="Add task" className="wt-press" style={{ width: 40, height: 40, border: "none", background: "transparent", borderRadius: 9999, color: "var(--text-secondary)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+            <WIcon name="plus" size={20} />
           </button>
-        </div>
+        </header>
 
-        {/* Tabs */}
-        <div className="flex gap-1 mx-6 mt-4 rounded-xl p-1" style={{ background: 'var(--bg-screen)' }}>
-          {(["account", "settings"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className="flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors capitalize"
-              style={{
-                background: tab === t ? 'var(--bg-card)' : 'transparent',
-                color: tab === t ? 'var(--text-primary)' : 'var(--text-muted)',
-                boxShadow: tab === t ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-              }}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+        {/* Content */}
+        <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+          {children}
+          {/* Clearance for the fixed mobile tab bar */}
+          <div className="wt-mobile-only" style={{ height: 96 }} />
+        </main>
 
-        {/* Scrollable body */}
-        <div className="overflow-y-auto flex-1 px-6 pb-6 pt-4 space-y-4">
-          {tab === "account" ? (
-            <>
-              {/* Stats row */}
-              <div className="rounded-2xl flex py-4" style={{ background: 'var(--bg-input)' }}>
-                <div className="flex-1 flex flex-col items-center gap-0.5">
-                  <span className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{completedTasks.length}</span>
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Tasks done</span>
-                </div>
-                <div className="w-px" style={{ background: 'var(--border)' }} />
-                <div className="flex-1 flex flex-col items-center gap-0.5">
-                  <span className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{totalHours.toFixed(1)}h</span>
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Focused</span>
-                </div>
-                <div className="w-px" style={{ background: 'var(--border)' }} />
-                <div className="flex-1 flex flex-col items-center gap-0.5">
-                  <span className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{onTimePct}%</span>
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>On time</span>
-                </div>
-              </div>
-
-              {/* Achievements */}
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>Achievements</p>
-                <div className="space-y-2">
-                  {ACHIEVEMENT_DEFS.map((def) => {
-                    const val = achievementValues[def.key];
-                    const AchievIcon = ACHIEVEMENT_ICON_MAP[def.iconName];
-                    const unlockedCount = def.tiers.filter((t) => unlockedIds.includes(t.id)).length;
-                    return (
-                      <div key={def.key} className="rounded-2xl p-3.5" style={{ background: 'var(--bg-input)' }}>
-                        <div className="flex items-center gap-3 mb-2.5">
-                          <div
-                            className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-                            style={{ backgroundColor: def.color + "30" }}
-                          >
-                            {AchievIcon && (
-                              <span style={{ color: def.color }}>
-                                <AchievIcon size={16} strokeWidth={2} />
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{def.label}</p>
-                            <p className="text-xs leading-tight" style={{ color: 'var(--text-muted)' }}>{def.description(val)}</p>
-                          </div>
-                          <span className="text-xs font-semibold shrink-0" style={{ color: 'var(--text-muted)' }}>
-                            {unlockedCount}/{def.tiers.length}
-                          </span>
-                        </div>
-                        <div className="flex gap-1.5">
-                          {def.tiers.map((tier) => {
-                            const isUnlocked = unlockedIds.includes(tier.id);
-                            return (
-                              <div key={tier.id} className="flex-1 flex flex-col items-center gap-1">
-                                <div
-                                  className="w-2 h-2 rounded-full"
-                                  style={{ backgroundColor: isUnlocked ? def.color : 'var(--bg-track)' }}
-                                />
-                                <span
-                                  className="text-[9px] text-center leading-tight font-medium"
-                                  style={{ color: isUnlocked ? 'var(--text-primary)' : 'var(--text-muted)' }}
-                                >
-                                  {tier.badge}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {user ? (
-                <>
-                  <p className="text-sm truncate" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
-                  <form onSubmit={handleSave} className="flex flex-col gap-3">
-                    <div>
-                      <label className="text-xs font-semibold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>Display name</label>
-                      <input
-                        type="text"
-                        placeholder="Your name"
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none transition"
-                        style={{ background: 'var(--bg-input)', color: 'var(--text-primary)' }}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold uppercase tracking-wide block mb-1.5" style={{ color: 'var(--text-muted)' }}>New password</label>
-                      <input
-                        type="password"
-                        placeholder="Leave blank to keep current"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        autoComplete="new-password"
-                        className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none transition"
-                        style={{ background: 'var(--bg-input)', color: 'var(--text-primary)' }}
-                      />
-                    </div>
-                    {message && (
-                      <p className={`text-sm ${message === "Saved!" ? "text-green-600" : "text-red-600"}`}>{message}</p>
-                    )}
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="w-full text-white font-semibold text-sm rounded-full py-3 transition disabled:opacity-50"
-                      style={{ background: 'var(--text-primary)' }}
-                    >
-                      {saving ? "Saving…" : "Save changes"}
-                    </button>
-                  </form>
-                </>
-              ) : (
-                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Running without an account. Add Supabase credentials to enable sign-in.</p>
-              )}
-
-              <button
-                onClick={onSignOut}
-                className="w-full flex items-center justify-center gap-2 text-sm transition-colors py-2"
-                style={{ color: 'var(--text-muted)' }}
-              >
-                <LogOut size={15} strokeWidth={2} />
-                Sign out
+        {/* Mobile bottom tab bar */}
+        <nav className="wt-mobile-only" style={{
+          position: "absolute", bottom: 0, left: 0, right: 0, background: "var(--bg-card)",
+          boxShadow: "var(--shadow-tab)", display: "grid", gridTemplateColumns: "repeat(3,1fr)",
+          padding: "10px 0 max(14px, env(safe-area-inset-bottom, 0px))",
+        }}>
+          {NAV_ITEMS.map(({ id, label, icon }) => {
+            const on = activeTab === id;
+            return (
+              <button key={id} onClick={() => setActiveTab(id)} style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
+                background: "none", border: "none", cursor: "pointer", padding: 0,
+                color: on ? "var(--text-primary)" : "var(--text-muted)", transition: "color 0.15s",
+              }}>
+                <WIcon name={icon} size={24} stroke={1.8} />
+                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.04em" }}>{label}</span>
               </button>
-            </>
-          ) : (
-            <>
-              {/* Default timer */}
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Default timer</p>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Pre-filled when adding tasks</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => stepTimer(-1)}
-                    disabled={defaultTimerMinutes <= TIMER_STEPS[0]}
-                    className="w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-30 transition-colors"
-                    style={{ background: 'var(--bg-screen)' }}
-                  >
-                    <Minus size={14} strokeWidth={2.5} />
-                  </button>
-                  <span className="w-14 text-center text-base font-bold" style={{ color: 'var(--text-primary)' }}>{defaultTimerMinutes}m</span>
-                  <button
-                    type="button"
-                    onClick={() => stepTimer(1)}
-                    disabled={defaultTimerMinutes >= TIMER_STEPS[TIMER_STEPS.length - 1]}
-                    className="w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-30 transition-colors"
-                    style={{ background: 'var(--bg-screen)' }}
-                  >
-                    <Plus size={14} strokeWidth={2.5} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="h-px" style={{ background: 'var(--bg-track)' }} />
-
-              {/* Daily goal */}
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Daily goal</p>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Tasks to complete each day</p>
-                </div>
-                <Stepper value={dailyGoal} min={1} max={20} onChange={setDailyGoal} />
-              </div>
-
-              <div className="h-px" style={{ background: 'var(--bg-track)' }} />
-
-              {/* Rest goal tier */}
-              <div>
-                <p className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Rest goal</p>
-                <div className="flex gap-2">
-                  {REST_TIERS.map(({ id, label, description }) => (
-                    <button
-                      key={id}
-                      onClick={() => setRestGoalTier(id)}
-                      className="flex-1 rounded-xl py-2.5 flex flex-col items-center gap-0.5 border-2 transition-colors"
-                      style={{
-                        background: 'var(--bg-input)',
-                        borderColor: restGoalTier === id ? 'var(--text-primary)' : 'transparent',
-                      }}
-                    >
-                      <span className="text-xs font-bold" style={{ color: restGoalTier === id ? 'var(--text-primary)' : 'var(--text-muted)' }}>{label}</span>
-                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{description}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="h-px" style={{ background: 'var(--bg-track)' }} />
-
-              {/* Theme */}
-              <div>
-                <p className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Theme</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {(Object.values(THEMES) as typeof THEMES[ThemeName][]).map((t) => {
-                    const isActive = theme === t.name;
-                    const wheelColors = t.colors.wheel as readonly string[];
-                    const conicStops = wheelColors.map((c, i) =>
-                      `${c} ${(i / wheelColors.length) * 100}% ${((i + 1) / wheelColors.length) * 100}%`
-                    ).join(', ');
-                    return (
-                      <button
-                        key={t.name}
-                        onClick={() => setTheme(t.name)}
-                        className="rounded-2xl p-3 flex flex-col gap-2.5 border-2 transition-all text-left relative"
-                        style={{
-                          background: t.colors.bgScreen,
-                          borderColor: isActive ? t.colors.accent : t.colors.bgInput,
-                        }}
-                      >
-                        <div
-                          className="w-10 h-10 rounded-full shrink-0"
-                          style={{ background: `conic-gradient(${conicStops})` }}
-                        />
-                        <div>
-                          <span className="text-xs font-bold block leading-tight" style={{ color: t.colors.textPrimary }}>{t.label}</span>
-                          <span className="text-[10px] leading-tight" style={{ color: t.colors.textSecondary }}>{t.dark ? 'Dark' : 'Light'}</span>
-                        </div>
-                        {isActive && (
-                          <div
-                            className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
-                            style={{ background: t.colors.accent }}
-                          >
-                            <Check size={9} strokeWidth={3} color={t.dark ? '#000000' : '#ffffff'} />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="h-px" style={{ background: 'var(--bg-track)' }} />
-
-              {/* Task labels */}
-              <div>
-                <p className="text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Task labels</p>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {categories.map((cat) => (
-                    <div key={cat} className="flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: 'var(--bg-screen)' }}>
-                      <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{cat}</span>
-                      <button
-                        onClick={() => removeCategory(cat)}
-                        className="transition-colors ml-0.5"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        <X size={11} strokeWidth={2.5} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="New label…"
-                    value={newCat}
-                    onChange={(e) => setNewCat(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && newCat.trim()) {
-                        addCategory(newCat.trim());
-                        setNewCat("");
-                      }
-                    }}
-                    maxLength={30}
-                    className="flex-1 rounded-xl px-4 py-2.5 text-sm focus:outline-none transition"
-                    style={{ background: 'var(--bg-input)', color: 'var(--text-primary)' }}
-                  />
-                  <button
-                    onClick={() => { if (newCat.trim()) { addCategory(newCat.trim()); setNewCat(""); } }}
-                    disabled={!newCat.trim()}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-30 transition-opacity"
-                    style={{ background: 'var(--text-primary)' }}
-                  >
-                    <Plus size={16} strokeWidth={2.5} className="text-white" />
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+            );
+          })}
+        </nav>
       </div>
     </div>
   );
 }
+
+export { userInitials, displayName, WheelMark };

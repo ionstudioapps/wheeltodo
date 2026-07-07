@@ -11,91 +11,299 @@ body {
   padding: 0;
 }
 
-/* ── Theme: Warm Start (default light) ─────────────────────────── */
-:root, .theme-warm-start {
-  --bg-screen:       #FAF7F2;
-  --bg-card:         #FFFFFF;
-  --bg-input:        #F5F0EB;
-  --bg-subtle:       #EEEBE6;
-  --bg-track:        #F0F0F0;
-  --border:          #E8E5E0;
-  --text-primary:    #2A2520;
-  --text-secondary:  #8A7E7A;
-  --text-muted:      #aaaaaa;
-  --accent:          #E59880;
-  --primary:         #ADA8CC;
-  --success:         #BCD4A5;
-  --danger:          #E59880;
-  --wheel-1: #EDB590; --wheel-2: #E59880; --wheel-3: #9DC4BC;
-  --wheel-4: #F0D29D; --wheel-5: #ADA8CC; --wheel-6: #D4A5C8;
-  --wheel-7: #BCD4A5; --wheel-8: #EDBDAC;
+/* ════════════════════════════════════════════════════════════════
+   Wheel To Do — design tokens (2026 redesign, "Warm, muted, breathable")
+   4 themes: Gentle Boost (warm-start) · Grounding (slow-down)
+             High Noon (light-a11y) · Eclipse (dark-a11y)
+   Source of truth for TS values: packages/shared/src/themes.ts
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Type families — populated by next/font in layout.tsx, with fallbacks */
+  --font-display: var(--font-ephesis, "Apple Chancery", cursive);
+  --font-sans: var(--font-albert-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
+
+  /* The eight muted palette tones (theme-independent) */
+  --c-peach:    #EDB590;
+  --c-coral:    #E59880;
+  --c-honey:    #F0D29D;
+  --c-sage:     #BCD4A5;
+  --c-mint:     #9DC4BC;
+  --c-lavender: #ADA8CC;
+  --c-lilac:    #D4A5C8;
+  --c-blush:    #EDBDAC;
+
+  /* Soft tints */
+  --c-peach-soft:    #F7E4D6;
+  --c-coral-soft:    #F5DACF;
+  --c-honey-soft:    #F8ECD3;
+  --c-sage-soft:     #E4EDD6;
+  --c-mint-soft:     #DCEAE6;
+  --c-lavender-soft: #E5E2EF;
+  --c-lilac-soft:    #EFDDE9;
+  --c-blush-soft:    #F7E5DC;
+
+  /* Radii */
+  --r-tag: 100px;
+  --r-row: 18px;
+  --r-card: 24px;
+  --r-sheet: 32px;
+  --r-pill: 100px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spin: cubic-bezier(0.18, 0.9, 0.22, 1);
+  --dur-quick: 160ms;
+  --dur-base: 260ms;
+
+  /* Plant illustration (Focus Mode) */
+  --plant-pot: #C08A5C;
+  --plant-pot-rim: #AE7048;
+  --plant-soil: #6A4828;
+  --plant-stem: #7CAA56;
+  --plant-leaf-a: #A5C87A;
+  --plant-leaf-b: #BCD4A5;
+  --plant-seed: #C8A248;
 }
 
-/* ── Theme: Slow Down (dark, grounding) ────────────────────────── */
-.theme-slow-down {
-  --bg-screen:       #1C1828;
-  --bg-card:         #26223A;
-  --bg-input:        #302C44;
-  --bg-subtle:       #2E2A42;
-  --bg-track:        #3A3650;
-  --border:          #302C44;
-  --text-primary:    #EDE8E3;
-  --text-secondary:  #9B8FA0;
-  --text-muted:      #6A6278;
-  --accent:          #ADA8CC;
-  --primary:         #9DC4BC;
-  --success:         #8AAE82;
-  --danger:          #C07868;
-  --wheel-1: #C8977A; --wheel-2: #C07868; --wheel-3: #7AADA6;
-  --wheel-4: #C4A87A; --wheel-5: #8E8AAA; --wheel-6: #A882A4;
-  --wheel-7: #98B888; --wheel-8: #C8A098;
+/* ── Theme: Warm Start / "Gentle Boost" (light, default) ───────── */
+:root, .theme-warm-start, [data-theme="warm-start"] {
+  --bg-screen:  #F3EEE5;
+  --bg-card:    #FAF6EE;
+  --bg-input:   #ECE5D8;
+  --bg-sheet:   #FAF6EE;
+  --bg-sunk:    #EDE6D9;
+  --bg-overlay: rgba(42, 37, 32, 0.38);
+
+  --ink:      #2A2520;
+  --ink-soft: #4A443C;
+
+  --text-primary:   #2A2520;
+  --text-secondary: #8C8378;
+  --text-muted:     #B4AB9D;
+  --text-on-ink:    #F6EFE3;
+
+  --border-hairline: #E4DCCD;
+  --border-soft:     #EAE2D4;
+  --border-strong:   #2A2520;
+
+  --action-primary:    #2A2520;
+  --action-on-primary: #F6EFE3;
+  --accent:            #E59880;
+  --accent-soft:       #F5DACF;
+  --action-success:    #8FB082;
+  --action-danger:     #CF7B68;
+
+  --wheel-1: #EDB590; --wheel-2: #E59880; --wheel-3: #F0D29D;
+  --wheel-4: #BCD4A5; --wheel-5: #9DC4BC; --wheel-6: #ADA8CC;
+  --wheel-7: #D4A5C8; --wheel-8: #EDBDAC;
+
+  --heat-1: #F0CDB8; --heat-2: #E9A98E; --heat-3: #DD8B68; --heat-4: #CD7350;
+
+  --shadow-card: 0 1px 2px rgba(42,37,32,0.04), 0 8px 24px rgba(42,37,32,0.06);
+  --shadow-pop:  0 12px 40px rgba(42,37,32,0.14);
+  --shadow-tab:  0 -1px 0 var(--border-hairline);
+
+  /* Legacy aliases used by older components */
+  --bg-subtle: #EDE6D9;
+  --bg-track:  #ECE5D8;
+  --border:    #E4DCCD;
+  --primary:   #ADA8CC;
+  --success:   #8FB082;
+  --danger:    #CF7B68;
 }
 
-/* ── Theme: Light Accessible (high contrast) ───────────────────── */
-.theme-light-a11y {
-  --bg-screen:       #FFFFFF;
-  --bg-card:         #F5F5F5;
-  --bg-input:        #EBEBEB;
-  --bg-subtle:       #DCDCDC;
-  --bg-track:        #D0D0D0;
-  --border:          #B8B8B8;
-  --text-primary:    #1A1210;
-  --text-secondary:  #4A4040;
-  --text-muted:      #6A6060;
-  --accent:          #B84A30;
-  --primary:         #5A5498;
-  --success:         #3A7230;
-  --danger:          #B84A30;
-  --wheel-1: #C8640A; --wheel-2: #B84A30; --wheel-3: #2A8C82;
-  --wheel-4: #8A7200; --wheel-5: #5A5498; --wheel-6: #8A4070;
-  --wheel-7: #3A7230; --wheel-8: #943060;
+/* ── Theme: Slow Down / "Grounding" (dark) ─────────────────────── */
+.theme-slow-down, [data-theme="slow-down"] {
+  --bg-screen:  #272233;
+  --bg-card:    #322C40;
+  --bg-input:   #3A3349;
+  --bg-sheet:   #322C40;
+  --bg-sunk:    #221E2C;
+  --bg-overlay: rgba(15, 12, 20, 0.55);
+
+  --ink:      #ECE4DB;
+  --ink-soft: #C9C0CC;
+
+  --text-primary:   #ECE4DB;
+  --text-secondary: #9F96A8;
+  --text-muted:     #6E6678;
+  --text-on-ink:    #272233;
+
+  --border-hairline: #3D3650;
+  --border-soft:     #443D58;
+  --border-strong:   #ECE4DB;
+
+  --action-primary:    #ECE4DB;
+  --action-on-primary: #272233;
+  --accent:            #E0A28D;
+  --accent-soft:       #463A43;
+  --action-success:    #9DC4BC;
+  --action-danger:     #D98E78;
+
+  --wheel-1: #C8977A; --wheel-2: #C07868; --wheel-3: #C4A87A;
+  --wheel-4: #98B888; --wheel-5: #7AADA6; --wheel-6: #8E8AAA;
+  --wheel-7: #A882A4; --wheel-8: #C8A098;
+
+  --heat-1: #4A3A3C; --heat-2: #6E4A44; --heat-3: #96604F; --heat-4: #C07868;
+
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.20), 0 10px 30px rgba(0,0,0,0.28);
+  --shadow-pop:  0 16px 48px rgba(0,0,0,0.45);
+  --shadow-tab:  0 -1px 0 var(--border-hairline);
+
+  --plant-pot: #8A6548; --plant-pot-rim: #7A5438; --plant-soil: #4A3420;
+  --plant-stem: #6E9A50; --plant-leaf-a: #8FB068; --plant-leaf-b: #9DBE88;
+  --plant-seed: #A88838;
+
+  --bg-subtle: #221E2C;
+  --bg-track:  #3A3349;
+  --border:    #3D3650;
+  --primary:   #ADA8CC;
+  --success:   #9DC4BC;
+  --danger:    #D98E78;
 }
 
-/* ── Theme: Dark Accessible (high contrast) ────────────────────── */
-.theme-dark-a11y {
-  --bg-screen:       #0F0D18;
-  --bg-card:         #1A1830;
-  --bg-input:        #242240;
-  --bg-subtle:       #1E1C30;
-  --bg-track:        #2A2845;
-  --border:          #242240;
-  --text-primary:    #FFFFFF;
-  --text-secondary:  #C8C0D8;
-  --text-muted:      #A098B0;
-  --accent:          #F5C4A0;
-  --primary:         #C8C4E8;
-  --success:         #A8D898;
-  --danger:          #F0A898;
-  --wheel-1: #F5C4A0; --wheel-2: #F0A898; --wheel-3: #B4E0D8;
-  --wheel-4: #F5DFA0; --wheel-5: #C8C4E8; --wheel-6: #E8BCD8;
-  --wheel-7: #A8D898; --wheel-8: #F0C8D0;
+/* ── Theme: Light Accessible / "High Noon" (high contrast) ─────── */
+.theme-light-a11y, [data-theme="light-a11y"] {
+  --bg-screen:  #FFFFFF;
+  --bg-card:    #F7F5F1;
+  --bg-input:   #EDEAE4;
+  --bg-sheet:   #FFFFFF;
+  --bg-sunk:    #EDEAE4;
+  --bg-overlay: rgba(22, 19, 15, 0.5);
+
+  --ink:      #16130F;
+  --ink-soft: #3A342C;
+
+  --text-primary:   #16130F;
+  --text-secondary: #4A4238;
+  --text-muted:     #6B6258;
+  --text-on-ink:    #FFFFFF;
+
+  --border-hairline: #C8C0B4;
+  --border-soft:     #D8D2C8;
+  --border-strong:   #16130F;
+
+  --action-primary:    #16130F;
+  --action-on-primary: #FFFFFF;
+  --accent:            #C0432D;
+  --accent-soft:       #F5DAD2;
+  --action-success:    #3A7230;
+  --action-danger:     #B02A18;
+
+  --wheel-1: #C8640A; --wheel-2: #C0432D; --wheel-3: #8A7200;
+  --wheel-4: #3A7230; --wheel-5: #2A8C82; --wheel-6: #5A5498;
+  --wheel-7: #8A4070; --wheel-8: #943060;
+
+  --heat-1: #EFC0AE; --heat-2: #DE8B6C; --heat-3: #C85F3E; --heat-4: #A03818;
+
+  --shadow-card: 0 1px 2px rgba(22,19,15,0.06), 0 8px 24px rgba(22,19,15,0.08);
+  --shadow-pop:  0 12px 40px rgba(22,19,15,0.20);
+  --shadow-tab:  0 -1px 0 var(--border-hairline);
+
+  --bg-subtle: #EDEAE4;
+  --bg-track:  #EDEAE4;
+  --border:    #C8C0B4;
+  --primary:   #5A5498;
+  --success:   #3A7230;
+  --danger:    #B02A18;
+}
+
+/* ── Theme: Dark Accessible / "Eclipse" (high contrast) ────────── */
+.theme-dark-a11y, [data-theme="dark-a11y"] {
+  --bg-screen:  #141019;
+  --bg-card:    #211C2E;
+  --bg-input:   #2C2640;
+  --bg-sheet:   #211C2E;
+  --bg-overlay: rgba(0, 0, 0, 0.65);
+  --bg-sunk:    #0E0B12;
+
+  --ink:      #F6EFE3;
+  --ink-soft: #D8D0C4;
+
+  --text-primary:   #F6EFE3;
+  --text-secondary: #C4BACA;
+  --text-muted:     #A79DAE;
+  --text-on-ink:    #141019;
+
+  --border-hairline: #453D58;
+  --border-soft:     #3A3350;
+  --border-strong:   #F6EFE3;
+
+  --action-primary:    #F6EFE3;
+  --action-on-primary: #141019;
+  --accent:            #EDB590;
+  --accent-soft:       #4A3830;
+  --action-success:    #A8D898;
+  --action-danger:     #F0A898;
+
+  --wheel-1: #F5C4A0; --wheel-2: #F0A898; --wheel-3: #F5DFA0;
+  --wheel-4: #A8D898; --wheel-5: #B4E0D8; --wheel-6: #C8C4E8;
+  --wheel-7: #E8BCD8; --wheel-8: #F0C8D0;
+
+  --heat-1: #4E3A32; --heat-2: #7A5644; --heat-3: #B08058; --heat-4: #EDB590;
+
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.3), 0 10px 30px rgba(0,0,0,0.4);
+  --shadow-pop:  0 16px 48px rgba(0,0,0,0.6);
+  --shadow-tab:  0 -1px 0 var(--border-hairline);
+
+  --plant-pot: #8A6548; --plant-pot-rim: #7A5438; --plant-soil: #4A3420;
+  --plant-stem: #7CAA56; --plant-leaf-a: #A5C87A; --plant-leaf-b: #BCD4A5;
+  --plant-seed: #C8A248;
+
+  --bg-subtle: #0E0B12;
+  --bg-track:  #2C2640;
+  --border:    #453D58;
+  --primary:   #C8C4E8;
+  --success:   #A8D898;
+  --danger:    #F0A898;
+}
+
+/* Soft tints don't read on dark surfaces — remap them for dark themes */
+.theme-slow-down, [data-theme="slow-down"],
+.theme-dark-a11y, [data-theme="dark-a11y"] {
+  --c-peach-soft:    color-mix(in oklab, #EDB590 24%, var(--bg-card));
+  --c-coral-soft:    color-mix(in oklab, #E59880 24%, var(--bg-card));
+  --c-honey-soft:    color-mix(in oklab, #F0D29D 24%, var(--bg-card));
+  --c-sage-soft:     color-mix(in oklab, #BCD4A5 24%, var(--bg-card));
+  --c-mint-soft:     color-mix(in oklab, #9DC4BC 24%, var(--bg-card));
+  --c-lavender-soft: color-mix(in oklab, #ADA8CC 24%, var(--bg-card));
+  --c-lilac-soft:    color-mix(in oklab, #D4A5C8 24%, var(--bg-card));
+  --c-blush-soft:    color-mix(in oklab, #EDBDAC 24%, var(--bg-card));
+}
+
+/* Legacy short-name aliases (--fg/--bg family) for older components */
+:root, [data-theme] {
+  --bg: var(--bg-screen);
+  --fg: var(--text-primary);
+  --fg2: var(--text-secondary);
+  --fg3: var(--text-muted);
+  --bar-bg: var(--bg-card);
+  --bar-border: var(--border-hairline);
+  --hub-bg: var(--bg-card);
+  --hm-0: var(--bg-sunk);
+  --hm-1: var(--heat-1);
+  --hm-2: var(--heat-2);
+  --hm-3: var(--heat-3);
+  --hm-4: var(--heat-4);
 }
 
 body {
-  background-color: var(--bg-screen, #FAF7F2);
+  background-color: var(--bg-screen, #F3EEE5);
   color: var(--text-primary, #2A2520);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button { font-family: inherit; }
+
+/* The expressive payoff word — Ephesis script */
+.script {
+  font-family: var(--font-display);
+  font-weight: 400;
+  line-height: 0.9;
+  letter-spacing: 0;
 }
 
 /* Safe area for mobile bottom nav */
@@ -103,12 +311,63 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
-/* Confetti burst animation */
+/* ── Animations ─────────────────────────────────────────────────── */
 @keyframes confetti-fall {
-  0%   { transform: translate(0, 0) rotate(0deg);                            opacity: 1; }
+  0%   { transform: translate(0, 0) rotate(0deg);                   opacity: 1; }
   80%  { opacity: 1; }
   100% { transform: translate(var(--cx), var(--cy)) rotate(var(--cr)); opacity: 0; }
 }
 .confetti-particle {
   animation: confetti-fall 1.4s ease-out forwards;
+}
+
+@keyframes wt-confetti-fly {
+  0%   { transform: translate(-50%,-50%) translate(0,0) rotate(0deg) scale(1); opacity: 1; }
+  100% { transform: translate(-50%,-50%) translate(var(--cx),var(--cy)) rotate(var(--cr)) scale(0.5); opacity: 0; }
+}
+@keyframes wt-slide-up { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes wt-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wt-stage-pop {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.92); }
+  65%  { transform: translateY(-2px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes wt-screen-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes wt-idle-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.wt-sheet   { animation: wt-slide-up 220ms var(--ease-out) both; }
+.wt-scrim   { animation: wt-fade-in 200ms ease-out both; }
+.wt-screen  { animation: wt-screen-in 320ms var(--ease-out) both; }
+
+/* Press feedback — the shrink IS the feedback */
+.wt-press { transition: transform 140ms var(--ease-out); }
+.wt-press:active { transform: scale(0.97); }
+
+/* Focus outlines: accent, never blue */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Hide desktop sidebar / mobile chrome responsively */
+@media (max-width: 899px) {
+  .wt-desktop-only { display: none !important; }
+}
+@media (min-width: 900px) {
+  .wt-mobile-only { display: none !important; }
+}
+
+/* Page container + tasks layout */
+.wt-page {
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 4px 22px 32px;
+}
+@media (min-width: 900px) {
+  .wt-page { max-width: 1100px; padding: 20px 52px 56px; }
+  .wt-page--narrow { max-width: 900px; }
+  .wt-tasks-layout { display: flex; gap: 52px; align-items: flex-start; }
+  .wt-tasks-main { flex: 1; min-width: 0; max-width: 560px; }
+  .wt-tasks-side { flex-shrink: 0; position: sticky; top: 12px; display: flex; flex-direction: column; align-items: center; gap: 18px; padding-top: 24px; }
+}
+@media (max-width: 899px) {
+  .wt-tasks-layout { display: flex; flex-direction: column; }
 }

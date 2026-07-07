@@ -66,6 +66,8 @@ export interface RestTask {
   durationMinutes: number;
   category: RestCategory;
   skippedToday?: boolean;
+  color?: string;
+  icon?: string;
 }
 
 export interface ActiveRestTimer {
@@ -91,6 +93,20 @@ export const PRESET_REST_TASKS: RestTask[] = [
 // Default wheel colours — warm-start theme. Override per-theme via CSS --wheel-N vars.
 export const COLORS = ["#EDB590", "#E59880", "#9DC4BC", "#F0D29D", "#ADA8CC", "#D4A5C8", "#BCD4A5", "#EDBDAC"];
 
+// Seed (free) tier caps — Bloom removes all of them.
+export const FREE_LIMITS = {
+  spinsPerDay: 5,
+  tasksOnWheel: 8,
+  habits: 3,
+  aiBreakdownsPerDay: 1,
+};
+
+export interface NotifPrefs {
+  nudge: boolean;   // gentle daily nudge
+  focus: boolean;   // focus session complete
+  recap: boolean;   // weekly recap
+}
+
 const DEFAULT_CATEGORIES = ["Work", "Personal", "Learning", "Health"];
 
 const defaultTasks: Task[] = [
@@ -106,6 +122,7 @@ const defaultTasks: Task[] = [
 
 interface AppContextType {
   tasks: Task[];
+  seedTasks: (tasks: Task[]) => void;
   addTask: (task: Omit<Task, "id">) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
@@ -120,6 +137,7 @@ interface AppContextType {
   pausePomodoro: () => void;
   resumePomodoro: () => void;
   completePomodoro: () => void;
+  cancelPomodoro: () => void;
   tickPomodoro: () => void;
 
   dailyGoal: number;
@@ -138,11 +156,19 @@ interface AppContextType {
   incrementSpinCount: () => void;
   achievementValues: AchievementValues;
 
+  spinsToday: number;
+  aiUsesToday: number;
+  registerAiUse: () => void;
+  habitHistory: Record<string, string[]>;
+  habitStreak: (habitId: string) => number;
+  notifPrefs: NotifPrefs;
+  setNotifPref: (key: keyof NotifPrefs, value: boolean) => void;
+
   restTasks: RestTask[];
   completedRestDays: Date[];
   partialRestDays: { date: Date; pct: number }[];
   toggleRestTask: (id: string) => void;
-  addRestTask: (name: string, durationMinutes?: number) => void;
+  addRestTask: (name: string, durationMinutes?: number, color?: string, icon?: string, category?: RestCategory) => void;
   removeRestTask: (id: string) => void;
 
   activeRestTimer: ActiveRestTimer | null;
@@ -196,6 +222,7 @@ function applyTheme(t: ThemeName) {
   const html = document.documentElement;
   Object.keys(THEMES).forEach((name) => html.classList.remove(`theme-${name}`));
   if (t !== 'warm-start') html.classList.add(`theme-${t}`);
+  html.setAttribute("data-theme", t);
 }
 
 const KEYS = {
@@ -215,6 +242,12 @@ const KEYS = {
   hasSeenOnboarding: "wt.hasSeenOnboarding",
   isPremium: "wt.isPremium",
   theme: "wt.theme",
+  spinsToday: "wt.spinsToday",
+  spinsTodayDate: "wt.spinsTodayDate",
+  aiUsesToday: "wt.aiUsesToday",
+  aiUsesTodayDate: "wt.aiUsesTodayDate",
+  habitHistory: "wt.habitHistory",
+  notifPrefs: "wt.notifPrefs",
 } as const;
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -240,6 +273,10 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [theme, setThemeState] = useState<ThemeName>('warm-start');
+  const [spinsToday, setSpinsToday] = useState(0);
+  const [aiUsesToday, setAiUsesToday] = useState(0);
+  const [habitHistory, setHabitHistory] = useState<Record<string, string[]>>({});
+  const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({ nudge: true, focus: true, recap: true });
   // Ref so mutation closures always read current userId without needing re-memoization
   const syncRef = useRef({ userId });
   useEffect(() => { syncRef.current = { userId }; }, [userId]);
@@ -289,6 +326,12 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     const savedTheme = ls<ThemeName>(KEYS.theme, 'warm-start');
     setThemeState(savedTheme);
     applyTheme(savedTheme);
+
+    // Daily counters reset at midnight
+    setSpinsToday(ls<string>(KEYS.spinsTodayDate, "") === todayStr ? ls<number>(KEYS.spinsToday, 0) : 0);
+    setAiUsesToday(ls<string>(KEYS.aiUsesTodayDate, "") === todayStr ? ls<number>(KEYS.aiUsesToday, 0) : 0);
+    setHabitHistory(ls<Record<string, string[]>>(KEYS.habitHistory, {}));
+    setNotifPrefs(ls<NotifPrefs>(KEYS.notifPrefs, { nudge: true, focus: true, recap: true }));
 
     setLoaded(true);
 
@@ -347,6 +390,13 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   }, [dailyGoal, defaultTimerMinutes, restGoalTier, loaded, userId]);
 
   // ─── Task actions ────────────────────────────────────────────────────────────
+
+  // Replace the task list wholesale (used by the tutorial to pre-load its 5 tasks)
+  const seedTasks = (seeded: Task[]) => {
+    setTasks(seeded);
+    const { userId: uid } = syncRef.current;
+    if (uid) seeded.forEach((t, i) => dbUpsertTask(uid, t, i));
+  };
 
   const addTask = (task: Omit<Task, "id">) => {
     const newTask = { ...task, id: Date.now().toString() };
@@ -450,6 +500,13 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     });
   };
 
+  const cancelPomodoro = useCallback(() => {
+    setPomodoroSession((s) => {
+      if (s) setTaskProgress((prev) => ({ ...prev, [s.taskId]: s.remainingSeconds }));
+      return null;
+    });
+  }, []);
+
   const tickPomodoro = useCallback(() => {
     setPomodoroSession((s) =>
       s && s.isRunning && s.remainingSeconds > 0
@@ -492,21 +549,37 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   }, []);
 
   const toggleRestTask = (id: string) => {
-    setRestTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, completedToday: !t.completedToday, skippedToday: false } : t))
-    );
+    setRestTasks((prev) => {
+      const task = prev.find((t) => t.id === id);
+      if (task) {
+        const nowDone = !task.completedToday;
+        const todayStr = new Date().toDateString();
+        setHabitHistory((h) => {
+          const existing = h[id] ?? [];
+          const next = {
+            ...h,
+            [id]: nowDone ? Array.from(new Set([...existing, todayStr])) : existing.filter((d) => d !== todayStr),
+          };
+          lsSet(KEYS.habitHistory, next);
+          return next;
+        });
+      }
+      return prev.map((t) => (t.id === id ? { ...t, completedToday: !t.completedToday, skippedToday: false } : t));
+    });
   };
 
-  const addRestTask = (name: string, durationMinutes = 10) => {
+  const addRestTask = (name: string, durationMinutes = 10, color?: string, icon?: string, category?: RestCategory) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     const newTask: RestTask = {
-      id: `custom_${Date.now()}`,
+      id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       name: trimmed,
       isPreset: false,
       completedToday: false,
       durationMinutes,
-      category: "My Tasks" as RestCategory,
+      category: category ?? ("My Tasks" as RestCategory),
+      ...(color ? { color } : {}),
+      ...(icon ? { icon } : {}),
     };
     setRestTasks((prev) => [...prev, newTask]);
     const { userId: uid } = syncRef.current;
@@ -515,7 +588,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
 
   const removeRestTask = (id: string) => {
     const task = restTasks.find((t) => t.id === id);
-    if (!task || task.isPreset) return;
+    if (!task) return;
     setRestTasks((prev) => prev.filter((t) => t.id !== id));
     const { userId: uid } = syncRef.current;
     if (uid) dbDeleteRestTask(uid, id);
@@ -557,7 +630,42 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
 
   const incrementSpinCount = useCallback(() => {
     setSpinCount((n) => n + 1);
+    setSpinsToday((n) => {
+      lsSet(KEYS.spinsToday, n + 1);
+      lsSet(KEYS.spinsTodayDate, new Date().toDateString());
+      return n + 1;
+    });
   }, []);
+
+  const registerAiUse = useCallback(() => {
+    setAiUsesToday((n) => {
+      lsSet(KEYS.aiUsesToday, n + 1);
+      lsSet(KEYS.aiUsesTodayDate, new Date().toDateString());
+      return n + 1;
+    });
+  }, []);
+
+  const setNotifPref = useCallback((key: keyof NotifPrefs, value: boolean) => {
+    setNotifPrefs((prev) => {
+      const next = { ...prev, [key]: value };
+      lsSet(KEYS.notifPrefs, next);
+      return next;
+    });
+  }, []);
+
+  const habitStreak = useCallback((habitId: string) => {
+    const dates = new Set(habitHistory[habitId] ?? []);
+    if (dates.size === 0) return 0;
+    let count = 0;
+    const day = new Date();
+    // Today only counts if already done; otherwise start from yesterday
+    if (!dates.has(day.toDateString())) day.setDate(day.getDate() - 1);
+    while (dates.has(day.toDateString())) {
+      count++;
+      day.setDate(day.getDate() - 1);
+    }
+    return count;
+  }, [habitHistory]);
 
   // ─── Derived values ───────────────────────────────────────────────────────────
 
@@ -669,13 +777,14 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   }, [completedRestDays]);
 
   const value: AppContextType = {
-    tasks, addTask, updateTask, deleteTask,
+    tasks, seedTasks, addTask, updateTask, deleteTask,
     completedTasks, completeTask, uncompleteTask,
-    pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, tickPomodoro,
+    pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, cancelPomodoro, tickPomodoro,
     dailyGoal, setDailyGoal,
     defaultTimerMinutes, setDefaultTimerMinutes,
     categories, addCategory, removeCategory,
     streak, bestStreak, hasActivityToday, spinCount, incrementSpinCount, achievementValues,
+    spinsToday, aiUsesToday, registerAiUse, habitHistory, habitStreak, notifPrefs, setNotifPref,
     restTasks, completedRestDays, partialRestDays, toggleRestTask, addRestTask, removeRestTask,
     activeRestTimer, startRestTimer, cancelRestTimer, tickRestTimer,
     todayMood, setTodayMood,
