@@ -296,6 +296,9 @@ export function HabitsTab() {
               {remaining} habit{remaining !== 1 ? "s" : ""} left to close your day.
             </p>
           )}
+          <p style={{ margin: "14px 0 0", fontSize: 12.5, fontWeight: 300, color: "var(--text-muted)", textAlign: "center" }}>
+            Rest counts. Same streak.
+          </p>
         </div>
       </div>
 

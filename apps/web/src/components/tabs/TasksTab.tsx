@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/kit";
 import { FocusMode } from "@/components/FocusMode";
 import { WeeklyRecap } from "@/components/WeeklyRecap";
+import { BrainStarter } from "@/components/BrainStarter";
 import { UpgradeScreen, BloomNudge } from "@/components/Upgrade";
 
 /* ── Add / edit task sheet ───────────────────────────────────────────────── */
@@ -319,6 +320,178 @@ function BreakdownModal({ task, onClose, onAdd }: {
   );
 }
 
+/* ── AI voice-to-task ────────────────────────────────────────────────────── */
+
+type VoicePhase = "recording" | "processing" | "results" | "error" | "unsupported";
+
+interface VoiceTask { name: string; minutes: number; category?: string }
+
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((e: { results: SpeechRecognitionResultList }) => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+function getSpeechRecognition(): (new () => SpeechRecognitionLike) | undefined {
+  if (typeof window === "undefined") return undefined;
+  const w = window as unknown as Record<string, unknown>;
+  return (w.SpeechRecognition ?? w.webkitSpeechRecognition) as (new () => SpeechRecognitionLike) | undefined;
+}
+
+function VoiceModal({ onClose, onAdd, onGenerated }: {
+  onClose: () => void;
+  onAdd: (tasks: VoiceTask[]) => void;
+  onGenerated: () => void;
+}) {
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [phase, setPhase] = useState<VoicePhase>(() => (getSpeechRecognition() ? "recording" : "unsupported"));
+  const [transcript, setTranscript] = useState("");
+  const [voiceTasks, setVoiceTasks] = useState<VoiceTask[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (phase !== "recording") return;
+    const SR = getSpeechRecognition();
+    if (!SR) return;
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = (e) => {
+      setTranscript(Array.from(e.results).map((r) => r[0].transcript).join(" "));
+    };
+    recognition.onerror = () => {
+      setError("Microphone access was denied or an error occurred.");
+      setPhase("error");
+    };
+    recognition.start();
+    recognitionRef.current = recognition;
+    return () => recognition.abort();
+  }, [phase]);
+
+  async function handleDone() {
+    recognitionRef.current?.stop();
+    if (!transcript.trim()) {
+      setError("Nothing was captured. Please try again.");
+      setPhase("error");
+      return;
+    }
+    setPhase("processing");
+    try {
+      const res = await fetch(fnUrl("voice-tasks"), {
+        method: "POST",
+        headers: fnHeaders(),
+        body: JSON.stringify({ transcript }),
+      });
+      if (!res.ok) throw new Error("Request failed");
+      const data = (await res.json()) as { tasks?: VoiceTask[]; error?: string };
+      if (data.error) throw new Error(data.error);
+      const items = data.tasks ?? [];
+      onGenerated();
+      setVoiceTasks(items);
+      setSelected(new Set(items.map((_, i) => i)));
+      setPhase("results");
+    } catch {
+      setError("Could not extract tasks. Please try again.");
+      setPhase("error");
+    }
+  }
+
+  function toggle(i: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  }
+
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+        <WIcon name="mic" size={16} color="var(--accent)" />
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "var(--text-primary)" }}>Tell me your day</h2>
+      </div>
+
+      {phase === "unsupported" && (
+        <p style={{ margin: 0, fontSize: 14, padding: "24px 0", textAlign: "center", color: "var(--text-secondary)" }}>
+          Voice input isn&apos;t supported in this browser. Try Chrome or Edge.
+        </p>
+      )}
+
+      {phase === "recording" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 12 }}>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 300, color: "var(--text-secondary)" }}>
+            Say everything you need to get done — it becomes tasks on the wheel.
+          </p>
+          <div style={{ minHeight: 80, borderRadius: "var(--r-row)", padding: "12px 16px", fontSize: 14, lineHeight: 1.55, background: "var(--bg-input)", color: transcript ? "var(--text-primary)" : "var(--text-muted)" }}>
+            {transcript || "Listening…"}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, color: "var(--accent)", flexShrink: 0 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 999, background: "var(--accent)", animation: "wt-fade-in 1s ease-in-out infinite alternate" }} />
+              <span style={{ fontSize: 12, fontWeight: 600 }}>Recording</span>
+            </span>
+            <SpinPill full style={{ height: 48, fontSize: 15 }} onClick={() => void handleDone()}>Done — make my tasks</SpinPill>
+          </div>
+        </div>
+      )}
+
+      {phase === "processing" && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "32px 0" }}>
+          <span style={{ display: "inline-block", animation: "wt-idle-spin 1.2s linear infinite", color: "var(--accent)", fontSize: 28 }}>◎</span>
+          <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Extracting tasks…</p>
+        </div>
+      )}
+
+      {phase === "error" && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "24px 0" }}>
+          <p style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)", textAlign: "center" }}>{error}</p>
+          <button onClick={() => { setTranscript(""); setPhase("recording"); }} style={{ padding: "10px 20px", borderRadius: "var(--r-tag)", fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer", background: "var(--bg-input)", color: "var(--text-primary)" }}>
+            Try again
+          </button>
+        </div>
+      )}
+
+      {phase === "results" && voiceTasks.length > 0 && (
+        <>
+          <p style={{ margin: "4px 0 14px", fontSize: 14, fontWeight: 300, color: "var(--text-secondary)" }}>
+            Pick the ones that should join the wheel.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 18 }}>
+            {voiceTasks.map((t, i) => (
+              <button key={i} type="button" onClick={() => toggle(i)} style={{
+                display: "flex", alignItems: "center", gap: 12, borderRadius: "var(--r-row)", padding: "12px 16px",
+                textAlign: "left", border: "none", cursor: "pointer", background: "var(--bg-input)",
+              }}>
+                <span style={{
+                  width: 22, height: 22, borderRadius: 999, flexShrink: 0,
+                  background: selected.has(i) ? "var(--action-success)" : "transparent",
+                  boxShadow: selected.has(i) ? "none" : "inset 0 0 0 1.5px var(--border-hairline)",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {selected.has(i) && <WIcon name="check" size={12} stroke={2.6} color="var(--bg-card)" />}
+                </span>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>{t.name}</span>
+                <span style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>{t.minutes}m</span>
+              </button>
+            ))}
+          </div>
+          <SpinPill full disabled={selected.size === 0}
+            onClick={() => { onAdd(voiceTasks.filter((_, i) => selected.has(i))); onClose(); }}>
+            Add {selected.size} task{selected.size !== 1 ? "s" : ""}
+          </SpinPill>
+        </>
+      )}
+    </Sheet>
+  );
+}
+
 /* ── Main TasksTab ───────────────────────────────────────────────────────── */
 
 interface TasksTabProps {
@@ -331,6 +504,7 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
     tasks, addTask, updateTask, deleteTask, completeTask,
     startPomodoro, incrementSpinCount, pomodoroSession, taskProgress,
     completedTasks, dailyGoal, streak, spinsToday, aiUsesToday, registerAiUse,
+    voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
   } = useApp();
   const { isPremium, activate } = useSubscription();
 
@@ -342,6 +516,8 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
   const [limitOpen, setLimitOpen] = useState(false);
   const [confetti, setConfetti] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [brainOpen, setBrainOpen] = useState(false);
 
   // Wheel state
   const [rotation, setRotation] = useState(0);
@@ -401,9 +577,35 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
   const tutActive = tutTasks.length > 0;
   const allTutDone = tutDone >= TUTORIAL_TASKS.length;
 
+  // Seed cap: 8 active tasks on the wheel. Returns how many more can be added.
+  const taskSlotsLeft = isPremium ? Infinity : Math.max(0, FREE_LIMITS.tasksOnWheel - tasks.length);
+
   function handleAdd(name: string, mins: number, color: string, icon: string) {
-    if (!isPremium && tasks.length >= FREE_LIMITS.tasksOnWheel) { setUpgradeOpen(true); return; }
+    if (taskSlotsLeft === 0) { setUpgradeOpen(true); return; }
     addTask({ name, minutes: mins, color, icon, category: icon });
+  }
+
+  // Voice-to-task: Seed gets 1 generation per month
+  function handleVoiceOpen() {
+    if (!isPremium && voiceUsesThisMonth >= FREE_LIMITS.voicePerMonth) { setUpgradeOpen(true); return; }
+    setVoiceOpen(true);
+  }
+
+  // Brain Starter: Seed 1/week · Bloom 1/day.
+  // Availability is time-dependent by design; a stale value within one render
+  // pass is harmless (it refreshes on the next interaction).
+  const brainAvailable = (() => {
+    if (!lastBrainGameAt) return true;
+    const last = new Date(lastBrainGameAt);
+    // eslint-disable-next-line react-hooks/purity
+    const now = Date.now();
+    if (isPremium) return last.toDateString() !== new Date(now).toDateString();
+    return now - last.getTime() > 7 * 86400000;
+  })();
+
+  function handleBrainOpen() {
+    if (brainAvailable) { setBrainOpen(true); return; }
+    if (!isPremium) setUpgradeOpen(true);
   }
 
   function handleSave(id: string, name: string, mins: number, color: string, icon: string) {
@@ -554,6 +756,9 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
               <SpinPill onClick={() => setModalOpen(true)}>
                 <WIcon name="plus" size={18} /> Add your first task
               </SpinPill>
+              <button onClick={handleVoiceOpen} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 500, color: "var(--text-secondary)", padding: 6 }}>
+                <WIcon name="mic" size={15} /> Or tell me your day — I&apos;ll make the tasks
+              </button>
             </div>
           )}
 
@@ -579,15 +784,47 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
                   />
                 ))}
               </div>
-              {/* AI breakdown entry */}
-              <button
-                onClick={() => tasks[0] && handleBreakdown(tasks[0])}
-                className="wt-press"
-                style={{ marginTop: 12, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 48, borderRadius: "var(--r-row)", border: "1.5px dashed var(--border-hairline)", color: "var(--text-secondary)", fontSize: 14, fontWeight: 500, background: "transparent", cursor: "pointer" }}
-              >
-                <WIcon name="wand" size={16} /> Break a task into steps
-                {!isPremium && aiUsesToday >= FREE_LIMITS.aiBreakdownsPerDay && (
-                  <span style={{ background: "var(--c-lavender)", borderRadius: "var(--r-tag)", padding: "2px 8px", fontSize: 10, fontWeight: 700, color: "var(--text-on-ink)", letterSpacing: "0.06em" }}>BLOOM</span>
+              {/* AI + warm-up quick actions */}
+              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+                {([
+                  {
+                    icon: "wand", label: "Break into steps",
+                    capped: !isPremium && aiUsesToday >= FREE_LIMITS.aiBreakdownsPerDay,
+                    onClick: () => tasks[0] && handleBreakdown(tasks[0]),
+                  },
+                  {
+                    icon: "mic", label: "Tell me your day",
+                    capped: !isPremium && voiceUsesThisMonth >= FREE_LIMITS.voicePerMonth,
+                    onClick: handleVoiceOpen,
+                  },
+                ] as const).map((a) => (
+                  <button key={a.label} onClick={a.onClick} className="wt-press" style={{
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 7, height: 48,
+                    borderRadius: "var(--r-row)", border: "1.5px dashed var(--border-hairline)",
+                    color: "var(--text-secondary)", fontSize: 13.5, fontWeight: 500, background: "transparent", cursor: "pointer",
+                  }}>
+                    <WIcon name={a.icon} size={15} /> {a.label}
+                    {a.capped && (
+                      <span style={{ background: "var(--c-lavender)", borderRadius: "var(--r-tag)", padding: "2px 7px", fontSize: 9.5, fontWeight: 700, color: "var(--text-on-ink)", letterSpacing: "0.06em" }}>BLOOM</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              {/* Brain starter */}
+              <button onClick={handleBrainOpen} className="wt-press" style={{
+                marginTop: 9, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                height: 44, borderRadius: "var(--r-row)", border: "none", background: "var(--c-lavender-soft)",
+                color: "var(--text-primary)", fontSize: 13.5, fontWeight: 500,
+                cursor: "pointer", opacity: brainAvailable || !isPremium ? 1 : 0.5,
+              }}>
+                <WIcon name="sparkle" size={15} color="var(--c-lavender)" />
+                {brainAvailable
+                  ? "Brain starter · a 30-second warm-up"
+                  : isPremium
+                    ? "Brain starter · back tomorrow"
+                    : "Brain starter · 1 a week on Seed"}
+                {!brainAvailable && !isPremium && (
+                  <span style={{ background: "var(--c-lavender)", borderRadius: "var(--r-tag)", padding: "2px 7px", fontSize: 9.5, fontWeight: 700, color: "var(--text-on-ink)", letterSpacing: "0.06em" }}>BLOOM</span>
                 )}
               </button>
             </div>
@@ -688,12 +925,37 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
           task={breakdownTask}
           onClose={() => setBreakdownTask(null)}
           onAdd={(subtasks) => {
-            subtasks.forEach((s, i) => addTask({
+            const capped = subtasks.slice(0, taskSlotsLeft === Infinity ? undefined : taskSlotsLeft);
+            capped.forEach((s, i) => addTask({
               name: s.name, minutes: s.minutes,
               color: COLORS[(tasks.length + i) % COLORS.length],
               icon: breakdownTask.icon, category: breakdownTask.category,
             }));
+            if (capped.length < subtasks.length) setUpgradeOpen(true);
           }}
+        />
+      )}
+
+      {voiceOpen && (
+        <VoiceModal
+          onClose={() => setVoiceOpen(false)}
+          onGenerated={registerVoiceUse}
+          onAdd={(voiceTasks) => {
+            const capped = voiceTasks.slice(0, taskSlotsLeft === Infinity ? undefined : taskSlotsLeft);
+            capped.forEach((t, i) => addTask({
+              name: t.name, minutes: t.minutes,
+              color: COLORS[(tasks.length + i) % COLORS.length],
+              icon: "work", category: t.category ?? "work",
+            }));
+            if (capped.length < voiceTasks.length) setUpgradeOpen(true);
+          }}
+        />
+      )}
+
+      {brainOpen && (
+        <BrainStarter
+          onClose={() => setBrainOpen(false)}
+          onFinished={registerBrainGame}
         />
       )}
 

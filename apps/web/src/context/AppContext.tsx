@@ -93,12 +93,14 @@ export const PRESET_REST_TASKS: RestTask[] = [
 // Default wheel colours — warm-start theme. Override per-theme via CSS --wheel-N vars.
 export const COLORS = ["#EDB590", "#E59880", "#9DC4BC", "#F0D29D", "#ADA8CC", "#D4A5C8", "#BCD4A5", "#EDBDAC"];
 
-// Seed (free) tier caps — Bloom removes all of them.
+// Seed (free) tier caps — Bloom removes all of them (Brain Starter goes 1/week → 1/day).
 export const FREE_LIMITS = {
   spinsPerDay: 5,
   tasksOnWheel: 8,
   habits: 3,
   aiBreakdownsPerDay: 1,
+  voicePerMonth: 1,
+  brainGamesPerWeek: 1,
 };
 
 export interface NotifPrefs {
@@ -159,6 +161,10 @@ interface AppContextType {
   spinsToday: number;
   aiUsesToday: number;
   registerAiUse: () => void;
+  voiceUsesThisMonth: number;
+  registerVoiceUse: () => void;
+  lastBrainGameAt: string | null;
+  registerBrainGame: () => void;
   habitHistory: Record<string, string[]>;
   habitStreak: (habitId: string) => number;
   notifPrefs: NotifPrefs;
@@ -246,6 +252,9 @@ const KEYS = {
   spinsTodayDate: "wt.spinsTodayDate",
   aiUsesToday: "wt.aiUsesToday",
   aiUsesTodayDate: "wt.aiUsesTodayDate",
+  voiceUsesMonth: "wt.voiceUsesMonth",
+  voiceUsesMonthKey: "wt.voiceUsesMonthKey",
+  lastBrainGameAt: "wt.lastBrainGameAt",
   habitHistory: "wt.habitHistory",
   notifPrefs: "wt.notifPrefs",
 } as const;
@@ -275,6 +284,8 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const [theme, setThemeState] = useState<ThemeName>('warm-start');
   const [spinsToday, setSpinsToday] = useState(0);
   const [aiUsesToday, setAiUsesToday] = useState(0);
+  const [voiceUsesThisMonth, setVoiceUsesThisMonth] = useState(0);
+  const [lastBrainGameAt, setLastBrainGameAt] = useState<string | null>(null);
   const [habitHistory, setHabitHistory] = useState<Record<string, string[]>>({});
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({ nudge: true, focus: true, recap: true });
   // Ref so mutation closures always read current userId without needing re-memoization
@@ -330,6 +341,9 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     // Daily counters reset at midnight
     setSpinsToday(ls<string>(KEYS.spinsTodayDate, "") === todayStr ? ls<number>(KEYS.spinsToday, 0) : 0);
     setAiUsesToday(ls<string>(KEYS.aiUsesTodayDate, "") === todayStr ? ls<number>(KEYS.aiUsesToday, 0) : 0);
+    const monthKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
+    setVoiceUsesThisMonth(ls<string>(KEYS.voiceUsesMonthKey, "") === monthKey ? ls<number>(KEYS.voiceUsesMonth, 0) : 0);
+    setLastBrainGameAt(ls<string | null>(KEYS.lastBrainGameAt, null));
     setHabitHistory(ls<Record<string, string[]>>(KEYS.habitHistory, {}));
     setNotifPrefs(ls<NotifPrefs>(KEYS.notifPrefs, { nudge: true, focus: true, recap: true }));
 
@@ -645,6 +659,20 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     });
   }, []);
 
+  const registerVoiceUse = useCallback(() => {
+    setVoiceUsesThisMonth((n) => {
+      lsSet(KEYS.voiceUsesMonth, n + 1);
+      lsSet(KEYS.voiceUsesMonthKey, `${new Date().getFullYear()}-${new Date().getMonth()}`);
+      return n + 1;
+    });
+  }, []);
+
+  const registerBrainGame = useCallback(() => {
+    const now = new Date().toISOString();
+    setLastBrainGameAt(now);
+    lsSet(KEYS.lastBrainGameAt, now);
+  }, []);
+
   const setNotifPref = useCallback((key: keyof NotifPrefs, value: boolean) => {
     setNotifPrefs((prev) => {
       const next = { ...prev, [key]: value };
@@ -785,6 +813,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     categories, addCategory, removeCategory,
     streak, bestStreak, hasActivityToday, spinCount, incrementSpinCount, achievementValues,
     spinsToday, aiUsesToday, registerAiUse, habitHistory, habitStreak, notifPrefs, setNotifPref,
+    voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
     restTasks, completedRestDays, partialRestDays, toggleRestTask, addRestTask, removeRestTask,
     activeRestTimer, startRestTimer, cancelRestTimer, tickRestTimer,
     todayMood, setTodayMood,

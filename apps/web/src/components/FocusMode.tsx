@@ -147,6 +147,12 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
   const [phase, setPhase] = useState<Phase>("prestart");
   const [showTimer, setShowTimer] = useState(true);
   const [showAbandon, setShowAbandon] = useState(false);
+  // Study Double — a study-with-me video that opens alongside the session
+  const [studyUrl, setStudyUrl] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("wt.studyDouble") ?? "";
+  });
+  const [studyOn, setStudyOn] = useState(false);
   const [confetti, setConfetti] = useState(false);
   const doneRef = useRef(false);
   const taskNameRef = useRef(pomodoroSession?.taskName ?? "");
@@ -219,14 +225,46 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
               </div>
             </div>
             <div style={{ padding: "0 24px 44px", flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 0", borderTop: "1px solid var(--border-hairline)", borderBottom: "1px solid var(--border-hairline)", marginBottom: 16, gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 0", borderTop: "1px solid var(--border-hairline)", gap: 16 }}>
                 <div>
                   <p style={{ margin: "0 0 2px", fontSize: 16, color: "var(--text-primary)" }}>Show timer</p>
                   <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>Display countdown during focus</p>
                 </div>
                 <Toggle value={showTimer} onChange={setShowTimer} label="Show timer" />
               </div>
-              <button onClick={() => { resumePomodoro(); setPhase("session"); }} className="wt-press" style={{ background: "var(--action-primary)", color: "var(--action-on-primary)", border: "none", borderRadius: "var(--r-pill)", fontSize: 17, fontWeight: 500, padding: "17px 32px", cursor: "pointer", width: "100%" }}>
+              <div style={{ padding: "16px 0", borderTop: "1px solid var(--border-hairline)", borderBottom: "1px solid var(--border-hairline)", marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                  <div>
+                    <p style={{ margin: "0 0 2px", fontSize: 16, color: "var(--text-primary)" }}>Study double</p>
+                    <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>Open a study-with-me video alongside</p>
+                  </div>
+                  <Toggle value={studyOn} onChange={setStudyOn} label="Study double" />
+                </div>
+                {studyOn && (
+                  <input
+                    type="url"
+                    inputMode="url"
+                    placeholder="Paste a YouTube link"
+                    value={studyUrl}
+                    onChange={(e) => {
+                      setStudyUrl(e.target.value);
+                      try { localStorage.setItem("wt.studyDouble", e.target.value); } catch { /* quota */ }
+                    }}
+                    style={{ marginTop: 12, width: "100%", height: 44, borderRadius: "var(--r-row)", padding: "0 14px", fontSize: 14, background: "var(--bg-input)", color: "var(--text-primary)", border: "none", outline: "none", fontFamily: "inherit" }}
+                  />
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  if (studyOn && /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(studyUrl.trim())) {
+                    window.open(studyUrl.trim(), "_blank", "noopener");
+                  }
+                  resumePomodoro();
+                  setPhase("session");
+                }}
+                className="wt-press"
+                style={{ background: "var(--action-primary)", color: "var(--action-on-primary)", border: "none", borderRadius: "var(--r-pill)", fontSize: 17, fontWeight: 500, padding: "17px 32px", cursor: "pointer", width: "100%" }}
+              >
                 Start.
               </button>
             </div>

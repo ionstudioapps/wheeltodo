@@ -9,6 +9,7 @@ const BLOOM_FEATURES = [
   "Unlimited habits tracked",
   "Unlimited AI task breakdowns",
   "Unlimited AI voice-to-task",
+  "Brain Starter every day",
   "AI Pattern Learning",
   "Cloud Sync & Backup",
   "Multi-device: phone, tablet, desktop",
@@ -21,7 +22,10 @@ const COMPARE_ROWS = [
   { label: "Habits", seed: "3", bloom: "Unlimited" },
   { label: "AI task breakdown", seed: "1/day", bloom: "Unlimited" },
   { label: "AI voice-to-task", seed: "1/month", bloom: "Unlimited" },
-  { label: "Cloud Sync", seed: "—", bloom: "✓" },
+  { label: "Brain Starter game", seed: "1/week", bloom: "1/day" },
+  { label: "AI Pattern Learning", seed: "—", bloom: "✓" },
+  { label: "Cloud Sync & Backup", seed: "—", bloom: "✓" },
+  { label: "Multi-device", seed: "—", bloom: "✓" },
 ];
 
 function BillingToggle({ billing, setBilling }: { billing: string; setBilling: (b: "monthly" | "annual") => void }) {
