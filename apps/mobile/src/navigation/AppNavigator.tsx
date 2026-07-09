@@ -1,331 +1,154 @@
-import React, { useRef, useState } from 'react';
-import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Apple, Bird, Bug, Cat, Cherry, Clock, Coffee, Dog, Fish, Flame, Flower, Leaf, ListTodo, Moon, PawPrint, Pizza, Rabbit, Rainbow, Rat, RotateCcw, Shrimp, Snail, Squirrel, Turtle, Worm } from 'lucide-react-native';
-import type { LucideIcon } from 'lucide-react-native';
+import { Flame, LayoutGrid, LifeBuoy, User } from 'lucide-react-native';
 import { useApp } from '../context/AppContext';
-import { SpinScreen } from '../screens/SpinScreen';
 import { TasksScreen } from '../screens/TasksScreen';
-import { HistoryScreen } from '../screens/HistoryScreen';
-import { RestScreen } from '../screens/RestScreen';
-import { ProfileScreen } from '../screens/ProfileScreen';
-import { EditProfileScreen } from '../screens/EditProfileScreen';
-import { TOKENS } from '../theme/tokens';
-
-type RootStackParamList = {
-  MainTabs: undefined;
-  Profile: undefined;
-  EditProfile: undefined;
-};
+import { HabitsScreen } from '../screens/HabitsScreen';
+import { YouScreen } from '../screens/YouScreen';
+import { FONTS } from '../theme/tokens';
+import { SectionLabel, SpinPill, WheelMark, cardShadow, useTokens } from '../components/kit';
+import { TUTORIAL_TASKS } from '../utils/tutorial';
 
 type TabParamList = {
-  Spin: undefined;
   Tasks: undefined;
-  Rest: undefined;
-  History: undefined;
+  Habits: undefined;
+  You: undefined;
 };
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
-const AVATAR_ICON_MAP: Record<string, { Icon: LucideIcon; bg: string; fg: string }> = {
-  cherry:   { Icon: Cherry,   bg: '#FF5C4D', fg: '#ffffff' },
-  apple:    { Icon: Apple,    bg: '#FF5C4D', fg: '#ffffff' },
-  cat:      { Icon: Cat,      bg: '#FF5C4D', fg: '#ffffff' },
-  dog:      { Icon: Dog,      bg: '#FF5C4D', fg: '#ffffff' },
-  rabbit:   { Icon: Rabbit,   bg: '#FF5C4D', fg: '#ffffff' },
-  fish:     { Icon: Fish,     bg: '#111111', fg: '#ffffff' },
-  squirrel: { Icon: Squirrel, bg: '#111111', fg: '#ffffff' },
-  snail:    { Icon: Snail,    bg: '#111111', fg: '#ffffff' },
-  rat:      { Icon: Rat,      bg: '#111111', fg: '#ffffff' },
-  bug:      { Icon: Bug,      bg: '#111111', fg: '#ffffff' },
-  bird:     { Icon: Bird,     bg: '#E8E0D5', fg: '#111111' },
-  turtle:   { Icon: Turtle,   bg: '#E8E0D5', fg: '#111111' },
-  flower:   { Icon: Flower,   bg: '#E8E0D5', fg: '#FF5C4D' },
-  leaf:     { Icon: Leaf,     bg: '#E8E0D5', fg: '#111111' },
-  pawprint: { Icon: PawPrint, bg: '#E8E0D5', fg: '#111111' },
-  shrimp:   { Icon: Shrimp,   bg: '#E8E0D5', fg: '#FF5C4D' },
-  worm:     { Icon: Worm,     bg: '#E8E0D5', fg: '#FF5C4D' },
-  pizza:    { Icon: Pizza,    bg: '#E8E0D5', fg: '#111111' },
-  coffee:   { Icon: Coffee,   bg: '#E8E0D5', fg: '#111111' },
-  rainbow:  { Icon: Rainbow,  bg: '#E8E0D5', fg: '#FF5C4D' },
-};
+const TAB_ICONS = { Tasks: LifeBuoy, Habits: LayoutGrid, You: User } as const;
 
-const TAB_ICONS: Record<keyof TabParamList, any> = {
-  Spin:    RotateCcw,
-  Tasks:   ListTodo,
-  Rest:    Moon,
-  History: Clock,
-};
+/* ── Tutorial welcome (first run) ────────────────────────────────────────── */
 
-// ─── Onboarding Sheet ─────────────────────────────────────────────────────────
+function TutorialWelcome({ onDone }: { onDone: () => void }) {
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
+  const { seedTasks } = useApp();
 
-const ONBOARDING_STEPS = [
-  {
-    emoji: '📝',
-    title: 'Add tasks to your wheel',
-    body: 'Head to the Tasks tab and add what you need to get done. They\'ll appear as slices on the wheel.',
-  },
-  {
-    emoji: '🎡',
-    title: 'Spin to pick what to work on',
-    body: 'Can\'t decide where to start? Spin the wheel! It picks a task for you, then starts a focus timer.',
-  },
-  {
-    emoji: '🌿',
-    title: 'Rest days count too',
-    body: 'Switch to Rest Mode on off days. Complete your rest goal to protect your streak — no burnout allowed.',
-  },
-];
-
-function OnboardingSheet({ onDone }: { onDone: () => void }) {
-  const [step, setStep] = useState(0);
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const current = ONBOARDING_STEPS[step];
-
-  function next() {
-    if (step < ONBOARDING_STEPS.length - 1) {
-      Animated.sequence([
-        Animated.timing(slideAnim, { toValue: -20, duration: 150, useNativeDriver: true, easing: Easing.in(Easing.ease) }),
-        Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true, easing: Easing.out(Easing.ease) }),
-      ]).start();
-      setStep((s) => s + 1);
-    } else {
-      onDone();
-    }
+  function begin() {
+    seedTasks(TUTORIAL_TASKS.map(({ id, name, minutes, color, icon }) => ({ id, name, minutes, color, icon, category: icon })));
+    onDone();
   }
 
   return (
-    <Modal transparent animationType="fade">
-      <View style={onbStyles.overlay}>
-        <Animated.View style={[onbStyles.card, { transform: [{ translateX: slideAnim }] }]}>
-          <View style={onbStyles.dotsRow}>
-            {ONBOARDING_STEPS.map((_, i) => (
-              <View key={i} style={[onbStyles.dot, i === step && onbStyles.dotActive]} />
-            ))}
+    <Modal animationType="fade">
+      <View style={{ flex: 1, backgroundColor: t.colors.bg.screen }}>
+        <ScrollView contentContainerStyle={{
+          flexGrow: 1, alignItems: 'center', justifyContent: 'center',
+          paddingHorizontal: 26, paddingTop: insets.top + 24, paddingBottom: Math.max(insets.bottom, 24) + 16,
+        }}>
+          <View style={{ marginBottom: 22 }}>
+            <WheelMark size={78} />
           </View>
-          <Text style={onbStyles.emoji}>{current.emoji}</Text>
-          <Text style={onbStyles.title}>{current.title}</Text>
-          <Text style={onbStyles.body}>{current.body}</Text>
-          <Pressable style={onbStyles.btn} onPress={next}>
-            <Text style={onbStyles.btnText}>
-              {step < ONBOARDING_STEPS.length - 1 ? 'Next' : 'Get started'}
+          <Text style={{ fontFamily: FONTS.sansLight, fontSize: 15, color: t.colors.text.secondary, marginBottom: 3 }}>Hello.</Text>
+          <Text style={{ fontFamily: FONTS.display, fontSize: 58, lineHeight: 66, color: t.colors.text.primary, marginBottom: 24 }}>
+            Welcome<Text style={{ color: t.colors.accent.main }}>.</Text>
+          </Text>
+
+          <View style={[{ width: '100%', backgroundColor: t.colors.bg.card, borderRadius: 20, padding: 16, marginBottom: 20 }, cardShadow(t.dark)]}>
+            <SectionLabel style={{ fontSize: 11, marginBottom: 11, marginLeft: 2 }}>Start here · 5 tasks</SectionLabel>
+            <View style={{ gap: 9 }}>
+              {TUTORIAL_TASKS.map((task) => (
+                <View key={task.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{ width: 26, height: 26, borderRadius: 999, backgroundColor: task.color, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontFamily: FONTS.sansBold, fontSize: 11, color: t.colors.bg.card }}>{task.step}</Text>
+                  </View>
+                  <Text style={{ flex: 1, fontFamily: FONTS.sans, fontSize: 14, color: t.colors.text.primary }}>{task.name}</Text>
+                  <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 11, color: t.colors.text.muted }}>{task.feature}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <SpinPill full onPress={begin}>Spin to begin</SpinPill>
+          <Pressable onPress={onDone} style={{ marginTop: 12, padding: 6 }}>
+            <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, color: t.colors.text.muted }}>
+              Skip — I&apos;ll add my own tasks
             </Text>
           </Pressable>
-          {step < ONBOARDING_STEPS.length - 1 && (
-            <Pressable style={onbStyles.skipBtn} onPress={onDone}>
-              <Text style={onbStyles.skipText}>Skip</Text>
-            </Pressable>
-          )}
-        </Animated.View>
+        </ScrollView>
       </View>
     </Modal>
   );
 }
 
-const onbStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: TOKENS.radius.sheet,
-    padding: 32,
-    marginHorizontal: 24,
-    alignItems: 'center',
-    gap: 12,
-  },
-  dotsRow: { flexDirection: 'row', gap: 6, marginBottom: 8 },
-  dot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#e0e0e0' },
-  dotActive: { backgroundColor: TOKENS.colors.action.primary, width: 18 },
-  emoji: { fontSize: 52 },
-  title: { fontSize: 22, fontWeight: '800', color: TOKENS.colors.text.primary, textAlign: 'center' },
-  body: { fontSize: 14, color: TOKENS.colors.text.secondary, textAlign: 'center', lineHeight: 22 },
-  btn: {
-    marginTop: 8,
-    backgroundColor: TOKENS.colors.action.primary,
-    borderRadius: TOKENS.radius.pill,
-    paddingHorizontal: 40,
-    paddingVertical: 14,
-    width: '100%',
-    alignItems: 'center',
-  },
-  btnText: { fontSize: 16, fontWeight: '600', color: '#ffffff' },
-  skipBtn: { paddingVertical: 8 },
-  skipText: { fontSize: 14, color: TOKENS.colors.text.secondary },
-});
+/* ── Header (streak + avatar) ────────────────────────────────────────────── */
 
-// ─── Nav components ───────────────────────────────────────────────────────────
-
-function StreakBadge({ onPress }: { onPress: () => void }) {
-  const { streak, hasActivityToday } = useApp();
-  const hasStreak = streak > 0;
-  const atRisk = hasStreak && !hasActivityToday;
-  const flameColor = !hasStreak
-    ? TOKENS.colors.text.muted
-    : TOKENS.colors.action.streak;
-  return (
-    <Pressable onPress={onPress} style={styles.streakBadge} hitSlop={8}>
-      <Flame
-        size={18}
-        color={flameColor}
-        strokeWidth={2.2}
-        fill={atRisk ? 'transparent' : hasStreak ? flameColor : 'transparent'}
-      />
-      <Text style={[styles.streakText, !hasStreak && styles.streakTextMuted]}>{streak}</Text>
-    </Pressable>
-  );
-}
-
-function AvatarButton({ onPress }: { onPress: () => void }) {
-  const { user } = useApp();
-  const av = user?.avatarId ? AVATAR_ICON_MAP[user.avatarId] : null;
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.avatarBtn, av ? { backgroundColor: av.bg } : null]}
-      hitSlop={8}
-    >
-      {av ? (
-        <av.Icon size={20} color={av.fg} strokeWidth={1.8} />
-      ) : (
-        <Text style={styles.avatarText}>{user?.initials ?? 'U'}</Text>
-      )}
-    </Pressable>
-  );
-}
-
-function MainTabs() {
-  return (
-    <Tab.Navigator
-      initialRouteName="Spin"
-      screenOptions={({ route }) => {
-        const Icon = TAB_ICONS[route.name as keyof TabParamList];
-        return {
-          headerShown: false,
-          tabBarActiveTintColor: TOKENS.colors.text.primary,
-          tabBarInactiveTintColor: TOKENS.colors.text.secondary,
-          tabBarStyle: {
-            backgroundColor: '#ffffff',
-            borderTopColor: '#e8e8e8',
-            borderTopWidth: 1,
-            height: 64,
-            paddingBottom: 8,
-            paddingTop: 6,
-          },
-          tabBarIcon: ({ focused, color, size }) => (
-            <Icon size={size} color={color} strokeWidth={focused ? 2.5 : 1.8} />
-          ),
-          tabBarLabel: () => null,
-        };
-      }}
-    >
-      <Tab.Screen name="Spin"    component={SpinScreen}    />
-      <Tab.Screen name="Tasks"   component={TasksScreen}   />
-      <Tab.Screen name="Rest"    component={RestScreen}    />
-      <Tab.Screen name="History" component={HistoryScreen} />
-    </Tab.Navigator>
-  );
-}
-
-// Custom header rendered in plain React Native — bypasses the native UIBarButtonItem
-// container that caused the white ring around the avatar.
-function MainTabsWithHeader() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+function Header({ onStreak, onAvatar }: { onStreak: () => void; onAvatar: () => void }) {
+  const t = useTokens();
   const insets = useSafeAreaInsets();
+  const { streak, user } = useApp();
 
   return (
-    <View style={{ flex: 1, backgroundColor: TOKENS.colors.bg.screen }}>
-      <View style={[styles.headerBar, { paddingTop: insets.top }]}>
-        <StreakBadge
-          onPress={() => (navigation as any).navigate('MainTabs', { screen: 'History' })}
-        />
-        <AvatarButton onPress={() => navigation.navigate('Profile')} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <MainTabs />
-      </View>
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingTop: insets.top + 6, paddingBottom: 4, paddingHorizontal: 22,
+      backgroundColor: t.colors.bg.screen,
+    }}>
+      <Pressable onPress={onStreak} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+        <Flame size={18} color={t.colors.accent.main} strokeWidth={2.2} />
+        <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 15, color: t.colors.text.primary, fontVariant: ['tabular-nums'] }}>
+          {streak}
+        </Text>
+      </Pressable>
+      <Pressable onPress={onAvatar} hitSlop={8} style={{
+        width: 42, height: 42, borderRadius: 21,
+        backgroundColor: t.colors.lavender, alignItems: 'center', justifyContent: 'center',
+        borderWidth: 3, borderColor: t.colors.bg.screen,
+      }}>
+        <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 14, color: t.colors.text.onInk }}>
+          {user?.initials ?? 'IO'}
+        </Text>
+      </Pressable>
     </View>
   );
 }
 
-export function AppNavigator() {
-  const { hasSeenOnboarding, markOnboardingSeen } = useApp();
+/* ── Navigator ───────────────────────────────────────────────────────────── */
 
-  // Login is optional — users can use the app without an account.
-  // Premium features prompt sign-in inline when needed.
+export function AppNavigator() {
+  const t = useTokens();
+  const { hasSeenOnboarding, markOnboardingSeen } = useApp();
 
   return (
     <>
-      <Stack.Navigator>
-        <Stack.Screen
-          name="MainTabs"
-          component={MainTabsWithHeader}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="Profile"
-          component={ProfileScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="EditProfile"
-          component={EditProfileScreen}
-          options={{ headerShown: false }}
-        />
-      </Stack.Navigator>
+      <Tab.Navigator
+        initialRouteName="Tasks"
+        screenOptions={({ route }) => {
+          const Icon = TAB_ICONS[route.name as keyof TabParamList];
+          return {
+            header: ({ navigation }) => (
+              <Header
+                onStreak={() => navigation.navigate('Habits')}
+                onAvatar={() => navigation.navigate('You')}
+              />
+            ),
+            tabBarActiveTintColor: t.colors.text.primary,
+            tabBarInactiveTintColor: t.colors.text.muted,
+            tabBarStyle: {
+              backgroundColor: t.colors.bg.card,
+              borderTopColor: t.colors.hairline,
+              borderTopWidth: 1,
+              height: 84,
+              paddingTop: 8,
+            },
+            tabBarLabelStyle: { fontFamily: FONTS.sansSemi, fontSize: 11, letterSpacing: 0.4 },
+            tabBarIcon: ({ focused, color }) => (
+              <Icon size={24} color={color} strokeWidth={focused ? 2.2 : 1.8} />
+            ),
+            sceneStyle: { backgroundColor: t.colors.bg.screen },
+          };
+        }}
+      >
+        <Tab.Screen name="Tasks" component={TasksScreen} />
+        <Tab.Screen name="Habits" component={HabitsScreen} />
+        <Tab.Screen name="You" component={YouScreen} />
+      </Tab.Navigator>
 
-      {!hasSeenOnboarding && (
-        <OnboardingSheet onDone={markOnboardingSeen} />
-      )}
+      {!hasSeenOnboarding && <TutorialWelcome onDone={markOnboardingSeen} />}
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: TOKENS.spacing.screenPad,
-    paddingBottom: 10,
-    backgroundColor: TOKENS.colors.bg.screen,
-  },
-  streakBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  streakText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: TOKENS.colors.action.streak,
-    letterSpacing: -0.3,
-  },
-  streakTextMuted: {
-    color: TOKENS.colors.text.muted,
-  },
-  avatarBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: TOKENS.colors.action.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  avatarText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#ffffff',
-    textAlign: 'center',
-    includeFontPadding: false,
-  },
-});

@@ -1,3 +1,4 @@
+import "@expo/metro-runtime"; // required for Metro web support
 import "react-native-url-polyfill/auto";
 import { registerRootComponent } from "expo";
 

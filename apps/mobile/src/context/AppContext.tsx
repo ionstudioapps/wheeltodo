@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode, useRef } from 'react';
 import { getSupabaseClient, dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted, dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings } from '@todo/shared';
+import type { ThemeName } from '@todo/shared/themes';
 import { ACHIEVEMENT_DEFS, getUnlockedTierIds, type AchievementValues } from '../utils/achievements';
 
 export interface Task {
@@ -128,7 +129,7 @@ interface AppContextType {
   completedRestDays: Date[];
   partialRestDays: { date: Date; pct: number }[];
   toggleRestTask: (id: string) => void;
-  addRestTask: (name: string, durationMinutes?: number) => void;
+  addRestTask: (name: string, durationMinutes?: number, category?: RestCategory) => void;
   removeRestTask: (id: string) => void;
 
   activeRestTimer: ActiveRestTimer | null;
@@ -148,7 +149,42 @@ interface AppContextType {
 
   hasSeenOnboarding: boolean;
   markOnboardingSeen: () => void;
+
+  // ── Design-port additions (parity with apps/web) ──
+  theme: ThemeName;
+  setTheme: (t: ThemeName) => void;
+  isPremium: boolean;
+  activatePremium: () => void;
+  seedTasks: (tasks: Task[]) => void;
+  cancelPomodoro: () => void;
+  spinsToday: number;
+  aiUsesToday: number;
+  registerAiUse: () => void;
+  voiceUsesThisMonth: number;
+  registerVoiceUse: () => void;
+  lastBrainGameAt: string | null;
+  registerBrainGame: () => void;
+  habitHistory: Record<string, string[]>;
+  habitStreak: (habitId: string) => number;
+  notifPrefs: NotifPrefs;
+  setNotifPref: (key: keyof NotifPrefs, value: boolean) => void;
 }
+
+export interface NotifPrefs {
+  nudge: boolean;
+  focus: boolean;
+  recap: boolean;
+}
+
+// Seed (free) tier caps — Bloom removes all of them (Brain Starter goes 1/week → 1/day).
+export const FREE_LIMITS = {
+  spinsPerDay: 5,
+  tasksOnWheel: 8,
+  habits: 3,
+  aiBreakdownsPerDay: 1,
+  voicePerMonth: 1,
+  brainGamesPerWeek: 1,
+};
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -167,12 +203,23 @@ const STORAGE_KEYS = {
   todayMoodDate: 'wheelTodo.todayMoodDate',
   restGoalTier: 'wheelTodo.restGoalTier',
   hasSeenOnboarding: 'wheelTodo.hasSeenOnboarding',
+  theme: 'wheelTodo.theme',
+  isPremium: 'wheelTodo.isPremium',
+  spinsToday: 'wheelTodo.spinsToday',
+  spinsTodayDate: 'wheelTodo.spinsTodayDate',
+  aiUsesToday: 'wheelTodo.aiUsesToday',
+  aiUsesTodayDate: 'wheelTodo.aiUsesTodayDate',
+  voiceUsesMonth: 'wheelTodo.voiceUsesMonth',
+  voiceUsesMonthKey: 'wheelTodo.voiceUsesMonthKey',
+  lastBrainGameAt: 'wheelTodo.lastBrainGameAt',
+  habitHistory: 'wheelTodo.habitHistory',
+  notifPrefs: 'wheelTodo.notifPrefs',
 } as const;
 
 const DEFAULT_CATEGORIES = ['Work', 'Personal', 'Learning', 'Health'];
 
 export const COLORS = [
-  '#E59880', '#EDB590', '#9DC4BC', '#F0D29D', '#ADA8CC', '#D4A5C8',
+  '#EDB590', '#E59880', '#9DC4BC', '#F0D29D', '#ADA8CC', '#D4A5C8', '#BCD4A5', '#EDBDAC',
 ];
 
 const defaultTasks: Task[] = [
@@ -210,6 +257,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [todayMood, setTodayMoodState] = useState<DailyMood>(null);
   const [restGoalTier, setRestGoalTierState] = useState<RestGoalTier>('standard');
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
+  const [theme, setThemeState] = useState<ThemeName>('warm-start');
+  const [isPremium, setIsPremium] = useState(false);
+  const [spinsToday, setSpinsToday] = useState(0);
+  const [aiUsesToday, setAiUsesToday] = useState(0);
+  const [voiceUsesThisMonth, setVoiceUsesThisMonth] = useState(0);
+  const [lastBrainGameAt, setLastBrainGameAt] = useState<string | null>(null);
+  const [habitHistory, setHabitHistory] = useState<Record<string, string[]>>({});
+  const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({ nudge: true, focus: true, recap: true });
 
   useEffect(() => {
     const load = async () => {
@@ -290,6 +345,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
             STORAGE_KEYS.hasSeenOnboarding,
           ]);
         if (onboardingRaw) setHasSeenOnboarding(JSON.parse(onboardingRaw));
+
+        // Design-port additions
+        const [[, themeRaw], [, premiumRaw], [, spinsRaw], [, spinsDateRaw],
+               [, aiRaw], [, aiDateRaw], [, voiceRaw], [, voiceKeyRaw],
+               [, brainRaw], [, habitHistRaw], [, notifRaw]] = await AsyncStorage.multiGet([
+          STORAGE_KEYS.theme, STORAGE_KEYS.isPremium,
+          STORAGE_KEYS.spinsToday, STORAGE_KEYS.spinsTodayDate,
+          STORAGE_KEYS.aiUsesToday, STORAGE_KEYS.aiUsesTodayDate,
+          STORAGE_KEYS.voiceUsesMonth, STORAGE_KEYS.voiceUsesMonthKey,
+          STORAGE_KEYS.lastBrainGameAt, STORAGE_KEYS.habitHistory, STORAGE_KEYS.notifPrefs,
+        ]);
+        if (themeRaw) setThemeState(JSON.parse(themeRaw) as ThemeName);
+        if (premiumRaw) setIsPremium(JSON.parse(premiumRaw));
+        if (spinsRaw && spinsDateRaw && JSON.parse(spinsDateRaw) === todayStr) setSpinsToday(JSON.parse(spinsRaw));
+        if (aiRaw && aiDateRaw && JSON.parse(aiDateRaw) === todayStr) setAiUsesToday(JSON.parse(aiRaw));
+        const monthKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
+        if (voiceRaw && voiceKeyRaw && JSON.parse(voiceKeyRaw) === monthKey) setVoiceUsesThisMonth(JSON.parse(voiceRaw));
+        if (brainRaw) setLastBrainGameAt(JSON.parse(brainRaw));
+        if (habitHistRaw) setHabitHistory(JSON.parse(habitHistRaw));
+        if (notifRaw) setNotifPrefs(JSON.parse(notifRaw));
       } catch {
         // keep defaults on parse failure
       } finally {
@@ -417,6 +492,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const cancelPomodoro = useCallback(() => {
+    setPomodoroSession((s) => {
+      if (s) setTaskProgress((prev) => ({ ...prev, [s.taskId]: s.remainingSeconds }));
+      return null;
+    });
+  }, []);
+
   const tickPomodoro = useCallback(() => {
     setPomodoroSession((s) =>
       s && s.isRunning && s.remainingSeconds > 0
@@ -425,9 +507,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  // Restore Supabase session on mount
+  // Restore Supabase session on mount.
+  // getSupabaseClient throws when EXPO_PUBLIC_SUPABASE_* env vars are absent —
+  // the app must still run offline/local-first in that case.
   useEffect(() => {
-    const supabase = getSupabaseClient();
+    let supabase: ReturnType<typeof getSupabaseClient>;
+    try {
+      supabase = getSupabaseClient();
+    } catch {
+      setAuthLoading(false);
+      return;
+    }
     supabase.auth.getSession().then(({ data }) => {
       const u = data.session?.user;
       if (u) {
@@ -477,15 +567,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [dailyGoal, defaultTimerMinutes, restGoalTier, loaded, supabaseUserId]);
 
   const login = async (email: string, password: string): Promise<string | null> => {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    return error ? error.message : null;
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      return error ? error.message : null;
+    } catch {
+      return 'Accounts are unavailable right now. You can keep using the app offline.';
+    }
   };
 
   const signUp = async (email: string, password: string): Promise<string | null> => {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.auth.signUp({ email: email.trim(), password });
-    return error ? error.message : null;
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.signUp({ email: email.trim(), password });
+      return error ? error.message : null;
+    } catch {
+      return 'Accounts are unavailable right now. You can keep using the app offline.';
+    }
   };
 
   const updateUser = (name: string, email: string, avatarId?: string) => {
@@ -604,21 +702,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleRestTask = (id: string) => {
-    setRestTasks((prev) =>
-      prev.map((t) => t.id === id ? { ...t, completedToday: !t.completedToday, skippedToday: false } : t)
-    );
+    setRestTasks((prev) => {
+      const task = prev.find((t) => t.id === id);
+      if (task) {
+        const nowDone = !task.completedToday;
+        const todayStr = new Date().toDateString();
+        setHabitHistory((h) => {
+          const existing = h[id] ?? [];
+          const next = {
+            ...h,
+            [id]: nowDone ? Array.from(new Set([...existing, todayStr])) : existing.filter((d) => d !== todayStr),
+          };
+          AsyncStorage.setItem(STORAGE_KEYS.habitHistory, JSON.stringify(next)).catch(() => {});
+          return next;
+        });
+      }
+      return prev.map((t) => t.id === id ? { ...t, completedToday: !t.completedToday, skippedToday: false } : t);
+    });
   };
 
-  const addRestTask = (name: string, durationMinutes = 10) => {
+  const addRestTask = (name: string, durationMinutes = 10, category?: RestCategory) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     const newTask: RestTask = {
-      id: `custom_${Date.now()}`,
+      id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       name: trimmed,
       isPreset: false,
       completedToday: false,
       durationMinutes,
-      category: 'My Tasks' as RestCategory,
+      category: category ?? ('My Tasks' as RestCategory),
     };
     setRestTasks((prev) => [...prev, newTask]);
     const { userId: uid } = syncRef.current;
@@ -664,8 +776,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    const supabase = getSupabaseClient();
-    await supabase.auth.signOut();
+    try {
+      const supabase = getSupabaseClient();
+      await supabase.auth.signOut();
+    } catch { /* offline sign-out is fine */ }
     setUser(null);
     setPomodoroSession(null);
   };
@@ -677,6 +791,78 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const incrementSpinCount = useCallback(() => {
     setSpinCount((n) => n + 1);
+    setSpinsToday((n) => {
+      AsyncStorage.multiSet([
+        [STORAGE_KEYS.spinsToday, JSON.stringify(n + 1)],
+        [STORAGE_KEYS.spinsTodayDate, JSON.stringify(new Date().toDateString())],
+      ]).catch(() => {});
+      return n + 1;
+    });
+  }, []);
+
+  // ── Design-port additions ──
+
+  const setTheme = useCallback((t: ThemeName) => {
+    setThemeState(t);
+    AsyncStorage.setItem(STORAGE_KEYS.theme, JSON.stringify(t)).catch(() => {});
+  }, []);
+
+  const activatePremium = useCallback(() => {
+    setIsPremium(true);
+    AsyncStorage.setItem(STORAGE_KEYS.isPremium, JSON.stringify(true)).catch(() => {});
+  }, []);
+
+  const seedTasks = useCallback((seeded: Task[]) => {
+    setTasks(seeded);
+    const { userId: uid } = syncRef.current;
+    if (uid) seeded.forEach((t, i) => dbUpsertTask(uid, t, i));
+  }, []);
+
+  const registerAiUse = useCallback(() => {
+    setAiUsesToday((n) => {
+      AsyncStorage.multiSet([
+        [STORAGE_KEYS.aiUsesToday, JSON.stringify(n + 1)],
+        [STORAGE_KEYS.aiUsesTodayDate, JSON.stringify(new Date().toDateString())],
+      ]).catch(() => {});
+      return n + 1;
+    });
+  }, []);
+
+  const registerVoiceUse = useCallback(() => {
+    setVoiceUsesThisMonth((n) => {
+      AsyncStorage.multiSet([
+        [STORAGE_KEYS.voiceUsesMonth, JSON.stringify(n + 1)],
+        [STORAGE_KEYS.voiceUsesMonthKey, JSON.stringify(`${new Date().getFullYear()}-${new Date().getMonth()}`)],
+      ]).catch(() => {});
+      return n + 1;
+    });
+  }, []);
+
+  const registerBrainGame = useCallback(() => {
+    const now = new Date().toISOString();
+    setLastBrainGameAt(now);
+    AsyncStorage.setItem(STORAGE_KEYS.lastBrainGameAt, JSON.stringify(now)).catch(() => {});
+  }, []);
+
+  const habitStreak = useCallback((habitId: string) => {
+    const dates = new Set(habitHistory[habitId] ?? []);
+    if (dates.size === 0) return 0;
+    let count = 0;
+    const day = new Date();
+    if (!dates.has(day.toDateString())) day.setDate(day.getDate() - 1);
+    while (dates.has(day.toDateString())) {
+      count++;
+      day.setDate(day.getDate() - 1);
+    }
+    return count;
+  }, [habitHistory]);
+
+  const setNotifPref = useCallback((key: keyof NotifPrefs, value: boolean) => {
+    setNotifPrefs((prev) => {
+      const next = { ...prev, [key]: value };
+      AsyncStorage.setItem(STORAGE_KEYS.notifPrefs, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   }, []);
 
   const hasActivityToday = useMemo(() => {
@@ -825,6 +1011,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     restMinutesToday, restGoalMinutes,
     restStreak, bestRestStreak,
     hasSeenOnboarding, markOnboardingSeen: () => setHasSeenOnboarding(true),
+    theme, setTheme, isPremium, activatePremium, seedTasks, cancelPomodoro,
+    spinsToday, aiUsesToday, registerAiUse,
+    voiceUsesThisMonth, registerVoiceUse,
+    lastBrainGameAt, registerBrainGame,
+    habitHistory, habitStreak, notifPrefs, setNotifPref,
   };
 
   return <AppContext.Provider value={value}>{loaded ? children : null}</AppContext.Provider>;

@@ -1,1008 +1,774 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
-  Alert,
-  Animated,
-  Dimensions,
-  Easing,
-  PanResponder,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+  Animated, Easing, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
-import * as Haptics from 'expo-haptics';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronDown, ChevronUp, Info, Target, Flame, Timer, Trophy, Zap } from 'lucide-react-native';
-import { useApp, COLORS, type Task } from '../context/AppContext';
-import { formatMmSs } from '../utils/task';
-import { TOKENS } from '../theme/tokens';
-import { showPomodoroNotification, dismissPomodoroNotification } from '../utils/notifications';
+import { ArrowRight, ArrowUpRight, Check, Mic, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react-native';
+import { useApp, COLORS, FREE_LIMITS, type Task } from '../context/AppContext';
+import { FONTS } from '../theme/tokens';
+import {
+  CategoryIcon, ConfettiBurst, Headline, SectionLabel, Sheet, SpinPill,
+  TASK_CATEGORIES, TASK_ICON_PATHS, TaskWheel, WheelHub, cardShadow, formatMmSs, useTokens,
+} from '../components/kit';
+import { FocusMode } from '../components/FocusMode';
+import { WeeklyRecap } from '../components/WeeklyRecap';
+import { BrainStarter } from '../components/BrainStarter';
+import { BloomChip, BloomNudge, UpgradeScreen } from '../components/Upgrade';
+import { TUTORIAL_TASKS, isTutorialTask, tutorialStepFor } from '../utils/tutorial';
+import { fnUrl, fnHeaders } from '../utils/functions';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CONFETTI_COLORS = ['#FF5C4D', '#FF9B50', '#4ECDC4', '#FFE66D', '#A78BFA', '#F9A8D4', '#60D394', '#118AB2'];
-const PARTICLE_COUNT = 50;
+interface Suggestion { name: string; minutes: number; category?: string }
 
-const particles = Array.from({ length: PARTICLE_COUNT }, () => ({
-  x: Math.random() * SCREEN_WIDTH,
-  color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
-  size: 6 + Math.random() * 8,
-  delay: Math.random() * 600,
-  maxRotation: 360 + Math.random() * 720,
-  drift: (Math.random() - 0.5) * 80,
-}));
+/* ── Task avatar ─────────────────────────────────────────────────────────── */
 
-function Confetti({ onDone }: { onDone: () => void }) {
-  const anims = useRef(particles.map(() => new Animated.Value(0))).current;
-  const rotAnims = useRef(particles.map(() => new Animated.Value(0))).current;
-
-  useEffect(() => {
-    const animations = particles.map((p, i) =>
-      Animated.sequence([
-        Animated.delay(p.delay),
-        Animated.parallel([
-          Animated.timing(anims[i], { toValue: 1, duration: 1600, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-          Animated.timing(rotAnims[i], { toValue: 1, duration: 1600, useNativeDriver: true }),
-        ]),
-      ])
-    );
-    Animated.parallel(animations).start(() => onDone());
-  }, []);
-
+function TaskAvatar({ task, size = 38 }: { task: Task; size?: number }) {
+  const t = useTokens();
+  const tut = isTutorialTask(task.id) ? tutorialStepFor(task.id) : undefined;
+  const hasIcon = task.icon && TASK_ICON_PATHS[task.icon];
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {particles.map((p, i) => {
-        const translateY = anims[i].interpolate({ inputRange: [0, 1], outputRange: [-20, 680] });
-        const translateX = anims[i].interpolate({ inputRange: [0, 1], outputRange: [0, p.drift] });
-        const opacity = anims[i].interpolate({ inputRange: [0, 0.1, 0.75, 1], outputRange: [0, 1, 1, 0] });
-        const rotate = rotAnims[i].interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${p.maxRotation}deg`] });
-        return (
-          <Animated.View
-            key={i}
-            style={{
-              position: 'absolute',
-              left: p.x,
-              top: 0,
-              width: p.size,
-              height: p.size * 0.5,
-              backgroundColor: p.color,
-              borderRadius: 2,
-              opacity,
-              transform: [{ translateY }, { translateX }, { rotate }],
-            }}
-          />
-        );
-      })}
+    <View style={{
+      width: size, height: size, borderRadius: 999, backgroundColor: task.color,
+      alignItems: 'center', justifyContent: 'center',
+    }}>
+      {tut ? (
+        <Text style={{ fontFamily: FONTS.sansBold, fontSize: size * 0.4, color: t.colors.bg.card }}>{tut.step}</Text>
+      ) : hasIcon ? (
+        <CategoryIcon id={task.icon} size={size * 0.45} color={t.colors.bg.card} />
+      ) : (
+        <Text style={{ fontFamily: FONTS.sansSemi, fontSize: size * 0.4, color: t.colors.bg.card }}>
+          {task.name.trim()[0]?.toUpperCase() ?? '?'}
+        </Text>
+      )}
     </View>
   );
 }
 
-const ICON_NAMES = ['PenLine', 'Code', 'Palette', 'Users', 'Mail', 'BookOpen', 'Briefcase', 'Coffee'];
+/* ── Task row ────────────────────────────────────────────────────────────── */
 
-function randomFrom<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+function TaskRow({ task, dim, remainingLabel, onComplete, onDelete, onEdit }: {
+  task: Task; dim?: boolean; remainingLabel?: string;
+  onComplete: () => void; onDelete: () => void; onEdit: () => void;
+}) {
+  const t = useTokens();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const tut = isTutorialTask(task.id) ? tutorialStepFor(task.id) : undefined;
 
-// ─── Add Task Sheet ────────────────────────────────────────────────────────────
-
-interface AddTaskSheetProps {
-  onClose: () => void;
-  onAdd: (name: string, mins: number, color: string, category: string) => void;
-  onSave?: (id: string, name: string, mins: number, color: string, category: string) => void;
-  categories: string[];
-  onAddCategory: (cat: string) => void;
-  task?: Task;
-}
-
-const ACHIEVEMENT_ICONS: Record<string, React.ComponentType<any>> = {
-  'Daily Goal': Target,
-  'On Fire': Flame,
-  'Achiever': Trophy,
-  'Speed Run': Zap,
-};
-
-function AchievementToast({ label, onDone }: { label: string; onDone: () => void }) {
-  const translateY = useRef(new Animated.Value(100)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-  const Icon = ACHIEVEMENT_ICONS[label] ?? Trophy;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 70, friction: 11 }),
-      Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-    ]).start();
-    const timer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(translateY, { toValue: 100, duration: 260, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0, duration: 260, useNativeDriver: true }),
-      ]).start(() => onDone());
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  return (
-    <Animated.View style={[toastStyles.container, { transform: [{ translateY }], opacity }]}>
-      <View style={toastStyles.iconCircle}>
-        <Icon size={18} color="#FFE66D" strokeWidth={2} />
-      </View>
-      <View style={toastStyles.textCol}>
-        <Text style={toastStyles.eyebrow}>Achievement unlocked</Text>
-        <Text style={toastStyles.label}>{label}</Text>
-      </View>
-    </Animated.View>
-  );
-}
-
-const toastStyles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    bottom: 24,
-    left: 16,
-    right: 16,
-    backgroundColor: '#111111',
-    borderRadius: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  textCol: { flex: 1 },
-  eyebrow: { fontSize: 11, color: 'rgba(255,255,255,0.5)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
-  label: { fontSize: 16, color: '#ffffff', fontWeight: '700', marginTop: 1 },
-});
-
-function AddTaskSheet({ onClose, onAdd, onSave, categories, onAddCategory, task }: AddTaskSheetProps) {
-  const isEdit = !!task;
-  const initMins = task?.minutes ?? 25;
-  const sheetY = useRef(new Animated.Value(700)).current;
-  const [name, setName] = useState(task?.name ?? '');
-  const [selectedColor, setSelectedColor] = useState(task?.color ?? COLORS[0]);
-  const [selectedDuration, setSelectedDuration] = useState(initMins);
-  const [durationHours, setDurationHours] = useState(String(Math.floor(initMins / 60)));
-  const [durationMins, setDurationMins] = useState(String(initMins % 60));
-  const [selectedCategory, setSelectedCategory] = useState(task?.category ?? '');
-  const [addingCategory, setAddingCategory] = useState(false);
-  const [newCategoryText, setNewCategoryText] = useState('');
-  const [durationError, setDurationError] = useState(false);
-  const dragY = useRef(new Animated.Value(0)).current;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => g.dy > 5,
-      onPanResponderMove: (_, g) => {
-        if (g.dy > 0) dragY.setValue(g.dy);
-      },
-      onPanResponderRelease: (_, g) => {
-        if (g.dy > 80 || g.vy > 0.5) {
-          Animated.timing(dragY, { toValue: 700, duration: 220, useNativeDriver: true }).start(() => onClose());
-        } else {
-          Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
-        }
-      },
-    })
-  ).current;
-
-  useEffect(() => {
-    Animated.spring(sheetY, {
-      toValue: 0,
-      useNativeDriver: true,
-      tension: 65,
-      friction: 11,
-    }).start();
-  }, []);
-
-  function close() {
-    Animated.timing(sheetY, {
-      toValue: 700,
-      duration: 260,
-      easing: Easing.in(Easing.cubic),
-      useNativeDriver: true,
-    }).start(() => onClose());
-  }
-
-  function handleAdd() {
-    const v = name.trim();
-    if (!v) return close();
-    if (selectedDuration <= 0) {
-      setDurationError(true);
-      return;
-    }
-    setDurationError(false);
-    if (isEdit && task && onSave) {
-      onSave(task.id, v, selectedDuration, selectedColor, selectedCategory);
-    } else {
-      onAdd(v, selectedDuration, selectedColor, selectedCategory);
-    }
-    close();
+  function handleDelete() {
+    if (confirmDelete) onDelete();
+    else { setConfirmDelete(true); setTimeout(() => setConfirmDelete(false), 2500); }
   }
 
   return (
-    <View style={sheet.backdrop}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={close} />
-      <Animated.View style={[sheet.panel, { transform: [{ translateY: Animated.add(sheetY, dragY) }] }]}>
-        <View style={sheet.handleArea} {...panResponder.panHandlers}>
-          <View style={sheet.handle} />
+    <Pressable onPress={onEdit} style={{
+      flexDirection: 'row', alignItems: 'center', gap: 13,
+      backgroundColor: dim ? t.colors.bg.sunk : t.colors.bg.card,
+      borderRadius: 18, paddingHorizontal: 15, paddingVertical: 14,
+      ...(dim ? {} : cardShadow(t.dark)),
+    }}>
+      <TaskAvatar task={task} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ fontFamily: FONTS.sansMedium, fontSize: 16, color: t.colors.text.primary }}>
+          {task.name}
+        </Text>
+        <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, marginTop: 1, color: confirmDelete ? t.colors.action.danger : t.colors.text.secondary }}>
+          {confirmDelete
+            ? 'Tap again to delete'
+            : tut
+              ? `${task.minutes > 0 ? `${task.minutes} min · ` : ''}${tut.feature}`
+              : remainingLabel ?? `${task.minutes} min`}
+        </Text>
+      </View>
+      {tut && !confirmDelete && (
+        <View style={{ backgroundColor: t.colors.softs.coral, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}>
+          <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 11, color: t.colors.accent.main }}>{tut.feature}</Text>
         </View>
-
-        <Text style={sheet.title}>{isEdit ? 'Edit task' : 'Add task'}</Text>
-        <Text style={sheet.subtitle}>{isEdit ? 'Update the details below.' : 'What needs doing?'}</Text>
-
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder="Task name..."
-          placeholderTextColor={TOKENS.colors.text.muted}
-          style={sheet.input}
-          autoFocus
-          returnKeyType="done"
-          onSubmitEditing={handleAdd}
-        />
-
-        <Text style={sheet.sectionLabel}>COLOUR</Text>
-        <View style={sheet.colorRow}>
-          {COLORS.map((c) => (
-            <Pressable
-              key={c}
-              onPress={() => setSelectedColor(c)}
-              style={[
-                sheet.colorCircle,
-                { backgroundColor: c },
-                selectedColor === c && sheet.colorSelected,
-              ]}
-            />
-          ))}
-        </View>
-
-        <Text style={sheet.sectionLabel}>DURATION</Text>
-        <View style={sheet.durationRow}>
-          <TextInput
-            value={durationHours}
-            onChangeText={(t) => {
-              const digits = t.replace(/[^0-9]/g, '');
-              setDurationHours(digits);
-              const h = parseInt(digits || '0', 10);
-              const m = parseInt(durationMins || '0', 10);
-              const total = h * 60 + m;
-              setSelectedDuration(total);
-              if (total > 0) setDurationError(false);
-            }}
-            keyboardType="number-pad"
-            maxLength={2}
-            style={[sheet.durationInput, durationError && sheet.durationInputError]}
-            selectTextOnFocus
-          />
-          <Text style={sheet.durationUnit}>h</Text>
-          <TextInput
-            value={durationMins}
-            onChangeText={(t) => {
-              const digits = t.replace(/[^0-9]/g, '');
-              setDurationMins(digits);
-              const h = parseInt(durationHours || '0', 10);
-              const m = parseInt(digits || '0', 10);
-              const total = h * 60 + m;
-              setSelectedDuration(total);
-              if (total > 0) setDurationError(false);
-            }}
-            keyboardType="number-pad"
-            maxLength={2}
-            style={[sheet.durationInput, durationError && sheet.durationInputError]}
-            selectTextOnFocus
-          />
-          <Text style={sheet.durationUnit}>m</Text>
-        </View>
-        {durationError && (
-          <Text style={sheet.durationErrorText}>Duration must be at least 1 minute.</Text>
-        )}
-
-        <Text style={sheet.sectionLabel}>CATEGORY</Text>
-        <View style={sheet.chipRow}>
-          {categories.map((cat) => (
-            <Pressable
-              key={cat}
-              onPress={() => setSelectedCategory(selectedCategory === cat ? '' : cat)}
-              style={[sheet.chip, selectedCategory === cat && sheet.chipActive]}
-            >
-              <Text style={[sheet.chipText, selectedCategory === cat && sheet.chipTextActive]}>
-                {cat}
-              </Text>
-            </Pressable>
-          ))}
-          {addingCategory ? (
-            <TextInput
-              value={newCategoryText}
-              onChangeText={setNewCategoryText}
-              placeholder="Label name..."
-              placeholderTextColor={TOKENS.colors.text.muted}
-              style={sheet.categoryInput}
-              autoFocus
-              returnKeyType="done"
-              onSubmitEditing={() => {
-                if (newCategoryText.trim()) {
-                  onAddCategory(newCategoryText.trim());
-                  setSelectedCategory(newCategoryText.trim());
-                }
-                setNewCategoryText('');
-                setAddingCategory(false);
-              }}
-              onBlur={() => {
-                setNewCategoryText('');
-                setAddingCategory(false);
-              }}
-            />
-          ) : (
-            <Pressable style={sheet.chip} onPress={() => setAddingCategory(true)}>
-              <Text style={[sheet.chipText, { color: TOKENS.colors.accent.heading }]}>+ Add</Text>
-            </Pressable>
-          )}
-        </View>
-
-        <Pressable onPress={handleAdd} style={sheet.addBtn}>
-          <Text style={sheet.addBtnText}>{isEdit ? 'Save changes' : 'Add task'}</Text>
-        </Pressable>
-      </Animated.View>
-    </View>
-  );
-}
-
-// ─── Swipeable Task Row ────────────────────────────────────────────────────────
-
-interface SwipeRowProps {
-  task: Task;
-  isActive: boolean;
-  displayTime: string;
-  onFocus: () => void;
-  onComplete: () => void;
-  onDelete: () => void;
-  onEdit: () => void;
-}
-
-function TimerButton({ onPress }: { onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={styles.focusIconBtn}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-    >
-      <Timer size={20} color={TOKENS.colors.action.primary} strokeWidth={1.8} />
+      )}
+      <Pressable hitSlop={8} onPress={handleDelete}>
+        <Trash2 size={16} color={confirmDelete ? t.colors.action.danger : t.colors.text.muted} strokeWidth={1.8} />
+      </Pressable>
+      <Pressable hitSlop={8} onPress={onComplete} style={{
+        width: 26, height: 26, borderRadius: 999, borderWidth: 1.5, borderColor: t.colors.hairline,
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Check size={13} color={t.colors.text.muted} strokeWidth={2} />
+      </Pressable>
     </Pressable>
   );
 }
 
-function SwipeableTaskRow({ task, isActive, displayTime, onFocus, onComplete, onDelete, onEdit }: SwipeRowProps) {
-  const translateX = useRef(new Animated.Value(0)).current;
+/* ── Add / edit task sheet ───────────────────────────────────────────────── */
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
-      onPanResponderMove: (_, g) => translateX.setValue(g.dx),
-      onPanResponderRelease: (_, g) => {
-        const THRESHOLD = 80;
-        if (g.dx > THRESHOLD) {
-          Animated.timing(translateX, { toValue: 500, duration: 180, useNativeDriver: true }).start(() => onComplete());
-        } else if (g.dx < -THRESHOLD) {
-          Animated.timing(translateX, { toValue: -500, duration: 180, useNativeDriver: true }).start(() => onDelete());
-        } else {
-          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, tension: 60, friction: 9 }).start();
-        }
-      },
-    })
-  ).current;
+const DURATIONS = [
+  { v: 15, l: '15m' }, { v: 30, l: '30m' }, { v: 45, l: '45m' }, { v: 60, l: '1hr' },
+];
 
-  const rightBgOpacity = translateX.interpolate({ inputRange: [0, 60], outputRange: [0, 1], extrapolate: 'clamp' });
-  const leftBgOpacity = translateX.interpolate({ inputRange: [-60, 0], outputRange: [1, 0], extrapolate: 'clamp' });
+function TaskSheet({ task, onAdd, onSave, onClose }: {
+  task?: Task;
+  onAdd: (name: string, mins: number, color: string, icon: string) => void;
+  onSave: (id: string, name: string, mins: number, color: string, icon: string) => void;
+  onClose: () => void;
+}) {
+  const t = useTokens();
+  const { defaultTimerMinutes, tasks: allTasks } = useApp();
+  const isEdit = !!task;
+  const [name, setName] = useState(task?.name ?? '');
+  const [mins, setMins] = useState(task?.minutes ?? defaultTimerMinutes);
+  const [color, setColor] = useState(task?.color ?? COLORS[allTasks.length % COLORS.length]);
+  const [icon, setIcon] = useState(task?.icon && TASK_ICON_PATHS[task.icon] ? task.icon : 'work');
+
+  function submit() {
+    const v = name.trim();
+    if (!v) return;
+    if (isEdit && task) onSave(task.id, v, mins, color, icon);
+    else onAdd(v, mins, color, icon);
+    onClose();
+  }
 
   return (
-    <View style={swipe.container}>
-      <Animated.View style={[swipe.bgRight, { opacity: rightBgOpacity }]}>
-        <Text style={swipe.bgRightLabel}>Done ✓</Text>
-      </Animated.View>
-      <Animated.View style={[swipe.bgLeft, { opacity: leftBgOpacity }]}>
-        <Text style={swipe.bgLeftLabel}>Delete ×</Text>
-      </Animated.View>
-      <Animated.View
-        style={[styles.taskCard, isActive && styles.taskCardActive, { transform: [{ translateX }] }]}
-        {...panResponder.panHandlers}
-      >
-        <View style={[styles.taskDot, { backgroundColor: task.color }]} />
-        <Pressable style={styles.taskInfo} onPress={onEdit}>
-          <Text style={styles.taskName} numberOfLines={1}>{task.name}</Text>
-          {task.category ? (
-            <Text style={styles.taskCategory}>{task.category}</Text>
-          ) : null}
-        </Pressable>
-        <Text style={styles.taskMeta}>{displayTime}</Text>
-        <TimerButton onPress={onFocus} />
-      </Animated.View>
-    </View>
-  );
-}
+    <Sheet onClose={onClose}>
+      <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 22, color: t.colors.text.primary, marginBottom: 3 }}>
+        {isEdit ? 'Edit task' : 'New task'}
+      </Text>
+      <Text style={{ fontFamily: FONTS.sansLight, fontSize: 14, color: t.colors.text.secondary, marginBottom: 14 }}>
+        {isEdit ? 'Update the details below.' : "It'll join the wheel for today."}
+      </Text>
 
-const swipe = StyleSheet.create({
-  container: {
-    borderRadius: TOKENS.radius.row,
-    overflow: 'hidden',
-  },
-  bgRight: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: TOKENS.colors.action.success,
-    justifyContent: 'center',
-    paddingLeft: 20,
-    borderRadius: TOKENS.radius.row,
-  },
-  bgLeft: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: TOKENS.colors.action.danger,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    paddingRight: 20,
-    borderRadius: TOKENS.radius.row,
-  },
-  bgRightLabel: { color: '#ffffff', fontWeight: '700', fontSize: 15 },
-  bgLeftLabel: { color: '#ffffff', fontWeight: '700', fontSize: 15 },
-});
-
-// ─── Tasks FAQ Accordion ───────────────────────────────────────────────────────
-
-function TasksFaqAccordion() {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <View style={faqStyles.card}>
-      <Pressable style={faqStyles.header} onPress={() => setExpanded((v) => !v)}>
-        <Info size={15} color={TOKENS.colors.accent.heading} strokeWidth={2} />
-        <Text style={faqStyles.headerText}>How do tasks work?</Text>
-        {expanded
-          ? <ChevronUp size={16} color={TOKENS.colors.text.secondary} strokeWidth={2} />
-          : <ChevronDown size={16} color={TOKENS.colors.text.secondary} strokeWidth={2} />
-        }
-      </Pressable>
-      {expanded && (
-        <View style={faqStyles.body}>
-          <Text style={faqStyles.bodyText}>
-            Tap the timer icon to start a focus session. Swipe right to mark a task done, swipe left to delete it. Tap a task name to edit it.
+      {/* Name input */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: 11, height: 54,
+        backgroundColor: t.colors.bg.input, borderRadius: 18, paddingHorizontal: 16,
+        borderWidth: 2, borderColor: t.colors.accent.main,
+      }}>
+        <View style={{ width: 28, height: 28, borderRadius: 999, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontFamily: FONTS.sansBold, fontSize: 12, color: t.colors.bg.card }}>
+            {name.trim()[0]?.toUpperCase() ?? '?'}
           </Text>
         </View>
-      )}
-    </View>
+        <TextInput
+          autoFocus value={name} onChangeText={setName}
+          placeholder="What needs doing?" placeholderTextColor={t.colors.text.muted}
+          style={{ flex: 1, fontFamily: FONTS.sans, fontSize: 16, color: t.colors.text.primary, paddingVertical: 0 }}
+        />
+      </View>
+
+      {/* Duration */}
+      <SectionLabel style={{ marginTop: 14, marginBottom: 8, fontSize: 11.5 }}>How long?</SectionLabel>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {DURATIONS.map((d) => {
+          const on = mins === d.v;
+          return (
+            <Pressable key={d.v} onPress={() => setMins(d.v)} style={{
+              flex: 1, height: 44, borderRadius: 100, alignItems: 'center', justifyContent: 'center',
+              backgroundColor: on ? t.colors.ink : t.colors.bg.input,
+            }}>
+              <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 14, color: on ? t.colors.text.onInk : t.colors.text.secondary }}>
+                {d.l}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* Colour */}
+      <SectionLabel style={{ marginTop: 14, marginBottom: 8, fontSize: 11.5 }}>Colour</SectionLabel>
+      <View style={{ flexDirection: 'row', gap: 7 }}>
+        {COLORS.map((c) => {
+          const on = color === c;
+          return (
+            <Pressable key={c} onPress={() => setColor(c)} style={{
+              flex: 1, aspectRatio: 1, borderRadius: 999, backgroundColor: c,
+              borderWidth: on ? 2.5 : 0, borderColor: t.colors.bg.sheet,
+              transform: [{ scale: on ? 1.15 : 1 }],
+            }} />
+          );
+        })}
+      </View>
+
+      {/* Category */}
+      <SectionLabel style={{ marginTop: 14, marginBottom: 8, fontSize: 11.5 }}>Category</SectionLabel>
+      <View style={{ flexDirection: 'row', gap: 7 }}>
+        {TASK_CATEGORIES.map((ic) => {
+          const on = icon === ic.id;
+          return (
+            <Pressable key={ic.id} onPress={() => setIcon(ic.id)} style={{
+              flex: 1, aspectRatio: 1, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+              backgroundColor: on ? t.colors.accent.soft : t.colors.bg.input,
+              borderWidth: on ? 1.5 : 0, borderColor: color,
+            }}>
+              <CategoryIcon id={ic.id} size={20} color={on ? color : t.colors.text.secondary} />
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <View style={{ marginTop: 18 }}>
+        <SpinPill full onPress={submit}>{isEdit ? 'Save changes' : 'Add task'}</SpinPill>
+      </View>
+    </Sheet>
   );
 }
 
-const faqStyles = StyleSheet.create({
-  card: {
-    backgroundColor: TOKENS.colors.bg.card,
-    borderRadius: TOKENS.radius.card,
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 14,
-    gap: 8,
-  },
-  headerText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: TOKENS.colors.text.primary,
-    flex: 1,
-  },
-  body: { paddingHorizontal: 14, paddingBottom: 14 },
-  bodyText: { fontSize: 13, color: TOKENS.colors.text.secondary, lineHeight: 20 },
-});
+/* ── AI sheets (breakdown + tell-me-your-day) ────────────────────────────── */
 
-// ─── Tasks Screen ──────────────────────────────────────────────────────────────
+type AiPhase = 'input' | 'loading' | 'results' | 'error';
+
+function AiSheet({ mode, task, onClose, onAdd, onGenerated }: {
+  mode: 'breakdown' | 'voice';
+  task?: Task;
+  onClose: () => void;
+  onAdd: (items: Suggestion[]) => void;
+  onGenerated?: () => void;
+}) {
+  const t = useTokens();
+  const [phase, setPhase] = useState<AiPhase>('input');
+  const [text, setText] = useState('');
+  const [items, setItems] = useState<Suggestion[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  async function run() {
+    if (!text.trim()) return;
+    setPhase('loading');
+    try {
+      const res = mode === 'breakdown'
+        ? await fetch(fnUrl('break-task'), {
+            method: 'POST', headers: fnHeaders(),
+            body: JSON.stringify({ taskName: task?.name, taskMinutes: task?.minutes, goal: text.trim(), constraints: '' }),
+          })
+        : await fetch(fnUrl('voice-tasks'), {
+            method: 'POST', headers: fnHeaders(),
+            body: JSON.stringify({ transcript: text.trim() }),
+          });
+      if (!res.ok) throw new Error('failed');
+      const data = await res.json() as { subtasks?: Suggestion[]; tasks?: Suggestion[]; error?: string };
+      if (data.error) throw new Error(data.error);
+      const out = (mode === 'breakdown' ? data.subtasks : data.tasks) ?? [];
+      onGenerated?.();
+      setItems(out);
+      setSelected(new Set(out.map((_, i) => i)));
+      setPhase('results');
+    } catch {
+      setPhase('error');
+    }
+  }
+
+  function toggle(i: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  }
+
+  const Icon = mode === 'breakdown' ? Wand2 : Mic;
+
+  return (
+    <Sheet onClose={onClose}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+        <Icon size={16} color={t.colors.accent.main} strokeWidth={2} />
+        <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 20, color: t.colors.text.primary }}>
+          {mode === 'breakdown' ? 'Break it down' : 'Tell me your day'}
+        </Text>
+      </View>
+      {mode === 'breakdown' && (
+        <Text numberOfLines={1} style={{ fontFamily: FONTS.sansLight, fontSize: 14, color: t.colors.text.secondary, marginBottom: 14 }}>
+          {task?.name}
+        </Text>
+      )}
+
+      {phase === 'input' && (
+        <View style={{ gap: 14, marginTop: mode === 'voice' ? 12 : 0 }}>
+          <Text style={{ fontFamily: FONTS.sansLight, fontSize: 14, lineHeight: 20, color: t.colors.text.secondary }}>
+            {mode === 'breakdown'
+              ? 'What does "done" look like?'
+              : 'Type or dictate everything you need to get done — it becomes tasks on the wheel. (Tip: use the mic key on your keyboard.)'}
+          </Text>
+          <TextInput
+            autoFocus multiline value={text} onChangeText={setText}
+            placeholder={mode === 'breakdown' ? 'e.g. A published post with intro, 3 sections and a conclusion' : 'e.g. finish the report, book dentist, 30 min reading…'}
+            placeholderTextColor={t.colors.text.muted}
+            style={{
+              minHeight: 84, borderRadius: 18, padding: 14, textAlignVertical: 'top',
+              backgroundColor: t.colors.bg.input, color: t.colors.text.primary,
+              fontFamily: FONTS.sans, fontSize: 14, lineHeight: 21,
+            }}
+          />
+          <SpinPill full onPress={() => void run()}>
+            {mode === 'breakdown' ? 'Generate subtasks' : 'Make my tasks'}
+          </SpinPill>
+        </View>
+      )}
+
+      {phase === 'loading' && (
+        <View style={{ alignItems: 'center', paddingVertical: 32, gap: 12 }}>
+          <Text style={{ fontSize: 28, color: t.colors.accent.main }}>◎</Text>
+          <Text style={{ fontFamily: FONTS.sans, fontSize: 14, color: t.colors.text.secondary }}>Thinking…</Text>
+        </View>
+      )}
+
+      {phase === 'error' && (
+        <View style={{ alignItems: 'center', paddingVertical: 24, gap: 12 }}>
+          <Text style={{ fontFamily: FONTS.sans, fontSize: 14, color: t.colors.text.secondary, textAlign: 'center' }}>
+            Couldn&apos;t reach the AI. Try again in a moment.
+          </Text>
+          <Pressable onPress={() => setPhase('input')} style={{ backgroundColor: t.colors.bg.input, borderRadius: 100, paddingHorizontal: 20, paddingVertical: 10 }}>
+            <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 14, color: t.colors.text.primary }}>Try again</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {phase === 'results' && items.length > 0 && (
+        <>
+          <View style={{ gap: 8, marginVertical: 14 }}>
+            {items.map((it, i) => {
+              const on = selected.has(i);
+              return (
+                <Pressable key={i} onPress={() => toggle(i)} style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 12,
+                  backgroundColor: t.colors.bg.input, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 12,
+                }}>
+                  <View style={{
+                    width: 22, height: 22, borderRadius: 999,
+                    backgroundColor: on ? t.colors.action.success : 'transparent',
+                    borderWidth: on ? 0 : 1.5, borderColor: t.colors.hairline,
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {on && <Check size={12} color={t.colors.bg.card} strokeWidth={2.6} />}
+                  </View>
+                  <Text style={{ flex: 1, fontFamily: FONTS.sansMedium, fontSize: 14, color: t.colors.text.primary }}>{it.name}</Text>
+                  <Text style={{ fontFamily: FONTS.sans, fontSize: 12, color: t.colors.text.muted }}>{it.minutes}m</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <SpinPill full disabled={selected.size === 0} onPress={() => { onAdd(items.filter((_, i) => selected.has(i))); onClose(); }}>
+            {`Add ${selected.size} task${selected.size !== 1 ? 's' : ''}`}
+          </SpinPill>
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+/* ── Main Tasks screen ───────────────────────────────────────────────────── */
 
 export function TasksScreen() {
+  const t = useTokens();
   const {
     tasks, addTask, updateTask, deleteTask, completeTask, startPomodoro,
-    pomodoroSession, pausePomodoro, resumePomodoro, completePomodoro, tickPomodoro,
-    completedTasks, dailyGoal, categories, addCategory,
-    taskProgress, pendingAchievementToast, clearAchievementToast,
-    notificationsEnabled,
+    incrementSpinCount, pomodoroSession, taskProgress, completedTasks,
+    dailyGoal, streak, spinsToday, aiUsesToday, registerAiUse,
+    voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
+    isPremium, activatePremium,
   } = useApp();
 
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [taskSheetOpen, setTaskSheetOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [showConfetti, setShowConfetti] = useState(false);
+  const [breakdownTask, setBreakdownTask] = useState<Task | null>(null);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [brainOpen, setBrainOpen] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [limitOpen, setLimitOpen] = useState(false);
+  const [focusOpen, setFocusOpen] = useState(false);
+  const [confetti, setConfetti] = useState(false);
+  const [picked, setPicked] = useState<Task | null>(null);
+  const [spinning, setSpinning] = useState(false);
 
-  const completedRef = useRef(false);
-  const prevRemainingRef = useRef<number | null>(null);
+  const rotation = useRef(new Animated.Value(0)).current;
+  const rotationRef = useRef(0);
+  const confettiTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    completedRef.current = false;
-  }, [pomodoroSession?.taskId]);
+  const spinsLeft = isPremium ? Infinity : Math.max(0, FREE_LIMITS.spinsPerDay - spinsToday);
+  const taskSlotsLeft = isPremium ? Infinity : Math.max(0, FREE_LIMITS.tasksOnWheel - tasks.length);
+
+  const todayCompleted = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return completedTasks.filter((c) => {
+      const d = new Date(c.completedAt); d.setHours(0, 0, 0, 0);
+      return d.getTime() === today.getTime();
+    });
+  }, [completedTasks]);
+
+  const tutTasks = tasks.filter((task) => isTutorialTask(task.id));
+  const tutDone = new Set(completedTasks.filter((c) => isTutorialTask(c.taskId)).map((c) => c.taskId)).size;
+  const tutActive = tutTasks.length > 0;
+
+  // Brain Starter: Seed 1/week · Bloom 1/day. Time-dependent by design.
+  const brainAvailable = (() => {
+    if (!lastBrainGameAt) return true;
+    const last = new Date(lastBrainGameAt);
+    const now = Date.now();
+    if (isPremium) return last.toDateString() !== new Date(now).toDateString();
+    return now - last.getTime() > 7 * 86400000;
+  })();
+
+  function spinWheel() {
+    if (tasks.length === 0 || spinning) return;
+    if (!isPremium && spinsLeft === 0) { setLimitOpen(true); return; }
+    setSpinning(true);
+    setPicked(null);
+    const idx = Math.floor(Math.random() * tasks.length);
+    const sliceAngle = 360 / tasks.length;
+    const target = 360 - (idx * sliceAngle + sliceAngle / 2);
+    const currentNorm = ((rotationRef.current % 360) + 360) % 360;
+    let delta = target - currentNorm;
+    if (delta <= 0) delta += 360;
+    const final = rotationRef.current + 6 * 360 + delta;
+    Animated.timing(rotation, {
+      toValue: final, duration: 3600, useNativeDriver: true, easing: Easing.out(Easing.cubic),
+    }).start(() => {
+      rotationRef.current = final;
+      setSpinning(false);
+      setPicked(tasks[idx]);
+      incrementSpinCount();
+    });
+  }
 
   function celebrate() {
-    setShowConfetti(true);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }
-
-  useEffect(() => {
-    if (!pomodoroSession?.isRunning) return;
-    const id = setInterval(tickPomodoro, 1000);
-    return () => clearInterval(id);
-  }, [pomodoroSession?.isRunning, tickPomodoro]);
-
-  // Update live notification every minute
-  useEffect(() => {
-    if (!pomodoroSession || !notificationsEnabled) return;
-    const remaining = pomodoroSession.remainingSeconds;
-    if (prevRemainingRef.current === null || Math.floor(prevRemainingRef.current / 60) !== Math.floor(remaining / 60)) {
-      showPomodoroNotification(pomodoroSession.taskName, remaining).catch(() => {});
-    }
-    prevRemainingRef.current = remaining;
-  }, [pomodoroSession?.remainingSeconds, pomodoroSession?.taskName, notificationsEnabled]);
-
-  // Dismiss notification when session ends
-  useEffect(() => {
-    if (!pomodoroSession) {
-      dismissPomodoroNotification().catch(() => {});
-      prevRemainingRef.current = null;
-    }
-  }, [pomodoroSession]);
-
-  // Auto-complete when timer hits 0
-  useEffect(() => {
-    if (pomodoroSession?.remainingSeconds === 0 && !completedRef.current) {
-      completedRef.current = true;
-      completePomodoro();
-      celebrate();
-    }
-  }, [pomodoroSession?.remainingSeconds]);
-
-  const progress = pomodoroSession
-    ? (pomodoroSession.totalSeconds - pomodoroSession.remainingSeconds) / pomodoroSession.totalSeconds
-    : 0;
-
-  function handleAdd(taskName: string, mins: number, color: string, category: string) {
-    addTask({ name: taskName, minutes: mins, color, icon: randomFrom(ICON_NAMES), category });
-  }
-
-  function handleSave(id: string, taskName: string, mins: number, color: string, category: string) {
-    updateTask(id, { name: taskName, minutes: mins, color, category });
-    setEditingTask(null);
+    setConfetti(true);
+    if (confettiTimer.current) clearTimeout(confettiTimer.current);
+    confettiTimer.current = setTimeout(() => setConfetti(false), 1800);
   }
 
   function handleDone(task: Task) {
-    const remainingSeconds = taskProgress[task.id];
-    const minutesActual = remainingSeconds !== undefined
-      ? Math.max(1, Math.ceil((task.minutes * 60 - remainingSeconds) / 60))
-      : task.minutes;
+    const remaining = taskProgress[task.id];
+    const minutesActual = remaining !== undefined
+      ? Math.max(1, Math.ceil((task.minutes * 60 - remaining) / 60))
+      : Math.max(1, task.minutes);
     completeTask(task.id, minutesActual);
     deleteTask(task.id);
     celebrate();
+    if (picked?.id === task.id) setPicked(null);
   }
 
-  function handleFocus(task: Task) {
-    if (pomodoroSession && pomodoroSession.taskId !== task.id) {
-      const minsLeft = Math.ceil(pomodoroSession.remainingSeconds / 60);
-      Alert.alert(
-        'Active session running',
-        `You have ${minsLeft} minute${minsLeft !== 1 ? 's' : ''} left on "${pomodoroSession.taskName}". Start a new session?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Switch', style: 'destructive', onPress: () => startPomodoro(task) },
-        ]
-      );
-    } else {
-      startPomodoro(task);
-    }
+  function handleStartFocus(task: Task) {
+    setPicked(null);
+    if (task.minutes === 0) { handleDone(task); return; }
+    startPomodoro(task);
+    setFocusOpen(true);
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayCompleted = completedTasks.filter((t) => {
-    const d = new Date(t.completedAt); d.setHours(0, 0, 0, 0);
-    return d.getTime() === today.getTime();
-  });
-  const todayDone = todayCompleted.length;
-  const totalMinutesDone = todayCompleted.reduce((s, t) => s + t.minutesActual, 0);
-  const goalPct = dailyGoal > 0 ? Math.min(Math.round((todayDone / dailyGoal) * 100), 100) : 0;
+  function handleAdd(name: string, mins: number, color: string, icon: string) {
+    if (taskSlotsLeft === 0) { setUpgradeOpen(true); return; }
+    addTask({ name, minutes: mins, color, icon, category: icon });
+  }
+
+  function addCapped(items: Suggestion[], icon = 'work') {
+    const capped = items.slice(0, taskSlotsLeft === Infinity ? undefined : taskSlotsLeft);
+    capped.forEach((it, i) => addTask({
+      name: it.name, minutes: it.minutes,
+      color: COLORS[(tasks.length + i) % COLORS.length],
+      icon, category: it.category ?? icon,
+    }));
+    if (capped.length < items.length) setUpgradeOpen(true);
+  }
+
+  function handleBreakdownOpen() {
+    if (!tasks[0]) return;
+    if (!isPremium && aiUsesToday >= FREE_LIMITS.aiBreakdownsPerDay) { setUpgradeOpen(true); return; }
+    registerAiUse();
+    setBreakdownTask(tasks[0]);
+  }
+
+  function handleVoiceOpen() {
+    if (!isPremium && voiceUsesThisMonth >= FREE_LIMITS.voicePerMonth) { setUpgradeOpen(true); return; }
+    setVoiceOpen(true);
+  }
+
+  function handleBrainOpen() {
+    if (brainAvailable) { setBrainOpen(true); return; }
+    if (!isPremium) setUpgradeOpen(true);
+  }
+
+  const slices = tasks.map((task) => ({
+    id: task.id, color: task.color,
+    label: task.name.trim()[0]?.toUpperCase(),
+    iconPaths: task.icon ? TASK_ICON_PATHS[task.icon] : undefined,
+  }));
+
+  const pickedTut = picked && isTutorialTask(picked.id) ? tutorialStepFor(picked.id) : undefined;
+  const s = styles(t);
 
   return (
-    <SafeAreaView style={styles.safe} edges={[]}>
-      <View style={styles.navBar}>
-        <View>
-          <Text style={styles.navTitle}>Your tasks are set.</Text>
-          <Text style={[styles.navTitle, { color: TOKENS.colors.accent.heading }]}>Time to get to work.</Text>
+    <View style={{ flex: 1, backgroundColor: t.colors.bg.screen }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 40 }}>
+        {/* Headline */}
+        <View style={{ paddingTop: 10 }}>
+          {tutActive ? (
+            <Headline lead="Your first spin." script="Begin" size={54} />
+          ) : (
+            <Headline lead="Not sure where to start?" script="Spin" size={56} />
+          )}
         </View>
-        <Pressable
-          onPress={() => setSheetOpen(true)}
-          style={styles.addFab}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Text style={styles.addFabText}>+</Text>
-        </Pressable>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <TasksFaqAccordion />
-
-        {/* Your stats */}
-        {todayDone > 0 && (
-          <>
-            <Text style={styles.sectionLabel}>Your stats</Text>
-            <View style={styles.statCard}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{totalMinutesDone}m</Text>
-                <Text style={styles.statLabel}>Done</Text>
+        {/* Tutorial banner + progress */}
+        {tutActive && (
+          <View style={{ marginTop: 14 }}>
+            <View style={[s.banner, cardShadow(t.dark)]}>
+              <View style={s.bannerBadge}>
+                <Sparkles size={18} color={t.colors.accent.main} strokeWidth={2} />
               </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{todayDone}/{dailyGoal}</Text>
-                <Text style={styles.statLabel}>Tasks</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{goalPct}%</Text>
-                <Text style={styles.statLabel}>Goal</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.bannerTitle}>Start here.</Text>
+                <Text style={s.bannerSub}>Five tasks. Five features. Spin to begin.</Text>
               </View>
             </View>
-          </>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingHorizontal: 2 }}>
+              <View style={{ flex: 1, height: 4, borderRadius: 99, backgroundColor: t.colors.bg.sunk, overflow: 'hidden' }}>
+                <View style={{ height: '100%', width: `${(tutDone / TUTORIAL_TASKS.length) * 100}%`, backgroundColor: t.colors.accent.main, borderRadius: 99 }} />
+              </View>
+              <Text style={s.progressText}>{tutDone} / {TUTORIAL_TASKS.length}</Text>
+            </View>
+          </View>
         )}
 
-        {/* Focus card */}
-        {pomodoroSession && (() => {
-          const activeTask = tasks.find((t) => t.id === pomodoroSession.taskId);
-          return (
-          <>
-            <Text style={styles.sectionLabel}>Focusing now</Text>
-            <View style={styles.focusCard}>
-            <View style={styles.focusingRow}>
-              {activeTask && (
-                <View style={[styles.focusingDot, { backgroundColor: activeTask.color }]} />
-              )}
-              <Text style={styles.focusingTask}>{pomodoroSession.taskName}</Text>
-            </View>
-            {activeTask?.category ? (
-              <View style={styles.categoryBadge}>
-                <Text style={styles.categoryBadgeText}>{activeTask.category}</Text>
-              </View>
-            ) : null}
-            <Text style={styles.timerText}>{formatMmSs(pomodoroSession.remainingSeconds)}</Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` as `${number}%` }]} />
-            </View>
-            <View style={styles.timerActions}>
-              <Pressable
-                onPress={pomodoroSession.isRunning ? pausePomodoro : resumePomodoro}
-                style={styles.pauseBtn}
-              >
-                <Text style={styles.pauseBtnText}>
-                  {pomodoroSession.isRunning ? 'Pause' : 'Resume'}
+        {/* Wheel */}
+        {tasks.length > 0 && (
+          <View style={{ alignItems: 'center', marginTop: 18, gap: 18 }}>
+            <TaskWheel
+              slices={slices} size={300} rotation={rotation}
+              hub={<WheelHub done={todayCompleted.length} total={todayCompleted.length + tasks.length} />}
+              onSlicePress={(sl) => { const task = tasks.find((x) => x.id === sl.id); if (task && !spinning) setPicked(task); }}
+            />
+            <SpinPill onPress={spinWheel} disabled={spinning || (!isPremium && spinsLeft === 0)}>
+              {spinning ? 'Spinning…' : !isPremium && spinsLeft === 0 ? 'All done for today' : tutActive && tutDone === 0 ? 'Spin to begin' : 'Spin the wheel'}
+            </SpinPill>
+
+            {/* Seed spin dots */}
+            {!isPremium && (
+              <View style={[s.dotsWrap, cardShadow(t.dark)]}>
+                {Array.from({ length: FREE_LIMITS.spinsPerDay }, (_, i) => (
+                  <View key={i} style={{
+                    width: 9, height: 9, borderRadius: 999,
+                    backgroundColor: i < spinsToday ? t.colors.bg.sunk : t.colors.accent.main,
+                    borderWidth: i < spinsToday ? 1.5 : 0, borderColor: t.colors.hairline,
+                  }} />
+                ))}
+                <Text style={s.dotsText}>
+                  {spinsLeft > 0 ? `${spinsLeft} of ${FREE_LIMITS.spinsPerDay} left` : 'Resets at midnight'}
                 </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  if (!completedRef.current) {
-                    completedRef.current = true;
-                    completePomodoro();
-                    celebrate();
-                  }
-                }}
-                style={styles.earlyDoneBtn}
-              >
-                <Text style={styles.earlyDoneBtnText}>Done ✓</Text>
+              </View>
+            )}
+
+            {/* Meta line */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={s.metaText}>{streak}-day streak · {todayCompleted.length} to {dailyGoal}</Text>
+              <Pressable hitSlop={8} onPress={() => setRecapOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <Text style={s.metaLink}>This week</Text>
+                <ArrowUpRight size={14} color={t.colors.text.primary} strokeWidth={2} />
               </Pressable>
             </View>
           </View>
-          </>
-          );
-        })()}
-
-        {tasks.length > 0 && (
-          <Text style={styles.sectionLabel}>TODAY'S TASKS</Text>
         )}
 
-        {tasks.map((task) => {
-          const isActive = pomodoroSession?.taskId === task.id;
-          const displayTime = taskProgress[task.id] != null
-            ? formatMmSs(taskProgress[task.id])
-            : `${task.minutes}m`;
-          return (
-            <SwipeableTaskRow
-              key={task.id}
-              task={task}
-              isActive={isActive}
-              displayTime={displayTime}
-              onFocus={() => handleFocus(task)}
-              onComplete={() => handleDone(task)}
-              onDelete={() => deleteTask(task.id)}
-              onEdit={() => setEditingTask(task)}
-            />
-          );
-        })}
-
+        {/* Empty state */}
         {tasks.length === 0 && (
-          <Text style={styles.emptyHint}>No tasks yet. Tap + to add one.</Text>
+          <View style={{ alignItems: 'center', gap: 14, paddingVertical: 40 }}>
+            <Text style={s.emptyText}>Nothing on the wheel yet.{'\n'}Add a task to get it going.</Text>
+            <SpinPill onPress={() => setTaskSheetOpen(true)}>
+              <Plus size={18} color={t.colors.action.onPrimary} strokeWidth={2.2} />
+              <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 17, color: t.colors.action.onPrimary }}> Add your first task</Text>
+            </SpinPill>
+            <Pressable onPress={handleVoiceOpen} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, padding: 6 }}>
+              <Mic size={15} color={t.colors.text.secondary} strokeWidth={2} />
+              <Text style={s.metaText}>Or tell me your day — I&apos;ll make the tasks</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Task list */}
+        {tasks.length > 0 && (
+          <View style={{ paddingTop: 26 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <SectionLabel style={{ fontSize: 12 }}>Today · {tasks.length} task{tasks.length !== 1 ? 's' : ''}</SectionLabel>
+              <Pressable hitSlop={8} onPress={() => setTaskSheetOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Plus size={16} color={t.colors.text.secondary} strokeWidth={2} />
+                <Text style={s.metaText}>add</Text>
+              </Pressable>
+            </View>
+            <View style={{ gap: 9 }}>
+              {tasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  dim={picked?.id === task.id}
+                  remainingLabel={taskProgress[task.id] != null ? `${formatMmSs(taskProgress[task.id])} left` : undefined}
+                  onComplete={() => handleDone(task)}
+                  onDelete={() => deleteTask(task.id)}
+                  onEdit={() => setEditingTask(task)}
+                />
+              ))}
+            </View>
+
+            {/* AI quick actions */}
+            <View style={{ flexDirection: 'row', gap: 9, marginTop: 12 }}>
+              <Pressable onPress={handleBreakdownOpen} style={s.dashedBtn}>
+                <Wand2 size={15} color={t.colors.text.secondary} strokeWidth={2} />
+                <Text style={s.dashedText}>Break into steps</Text>
+                {!isPremium && aiUsesToday >= FREE_LIMITS.aiBreakdownsPerDay && <BloomChip />}
+              </Pressable>
+              <Pressable onPress={handleVoiceOpen} style={s.dashedBtn}>
+                <Mic size={15} color={t.colors.text.secondary} strokeWidth={2} />
+                <Text style={s.dashedText}>Tell me your day</Text>
+                {!isPremium && voiceUsesThisMonth >= FREE_LIMITS.voicePerMonth && <BloomChip />}
+              </Pressable>
+            </View>
+
+            {/* Brain starter */}
+            <Pressable onPress={handleBrainOpen} style={[s.brainBtn, { opacity: brainAvailable || !isPremium ? 1 : 0.5 }]}>
+              <Sparkles size={15} color={t.colors.lavender} strokeWidth={2} />
+              <Text style={s.brainText}>
+                {brainAvailable
+                  ? 'Brain starter · a 30-second warm-up'
+                  : isPremium ? 'Brain starter · back tomorrow' : 'Brain starter · 1 a week on Seed'}
+              </Text>
+              {!brainAvailable && !isPremium && <BloomChip />}
+            </Pressable>
+          </View>
+        )}
+
+        {/* Done today */}
+        {todayCompleted.length > 0 && (
+          <View style={{ marginTop: 22 }}>
+            <SectionLabel style={{ fontSize: 12, marginBottom: 12 }}>Done</SectionLabel>
+            <View style={{ gap: 9 }}>
+              {todayCompleted.slice(0, 5).map((c) => (
+                <View key={c.id} style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 13,
+                  backgroundColor: t.colors.bg.sunk, borderRadius: 18, paddingHorizontal: 15, paddingVertical: 14,
+                }}>
+                  <View style={{ width: 38, height: 38, borderRadius: 999, backgroundColor: c.color, opacity: 0.7, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 15, color: t.colors.bg.card }}>
+                      {c.taskName.trim()[0]?.toUpperCase() ?? '?'}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text numberOfLines={1} style={{ fontFamily: FONTS.sansMedium, fontSize: 16, color: t.colors.text.muted, textDecorationLine: 'line-through' }}>
+                      {c.taskName}
+                    </Text>
+                    <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, color: t.colors.text.secondary, marginTop: 1 }}>
+                      {c.minutesActual} min
+                    </Text>
+                  </View>
+                  <View style={{ width: 26, height: 26, borderRadius: 999, backgroundColor: t.colors.action.success, alignItems: 'center', justifyContent: 'center' }}>
+                    <Check size={14} color={t.colors.bg.card} strokeWidth={2.6} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
         )}
       </ScrollView>
 
-      {sheetOpen && (
-        <AddTaskSheet
-          onClose={() => setSheetOpen(false)}
+      {/* ── Overlays ── */}
+
+      {/* Result sheet */}
+      {picked && !spinning && (
+        <Sheet onClose={() => setPicked(null)}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 14 }}>
+            <TaskAvatar task={picked} size={46} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 18, color: t.colors.text.primary }}>{picked.name}</Text>
+              <Text style={{
+                fontFamily: pickedTut ? FONTS.sansMedium : FONTS.sansLight, fontSize: 13, marginTop: 1,
+                color: pickedTut ? t.colors.accent.main : t.colors.text.secondary,
+              }}>
+                {pickedTut ? `${pickedTut.feature} · step ${pickedTut.step} of 5` : `${picked.minutes} min focus block`}
+              </Text>
+            </View>
+          </View>
+          {pickedTut?.step === 1 && (
+            <View style={{ backgroundColor: t.colors.softs.coral, borderRadius: 14, padding: 12, marginBottom: 16 }}>
+              <Text style={{ fontFamily: FONTS.sans, fontSize: 13.5, lineHeight: 19, color: t.colors.text.primary }}>
+                You just used the wheel. It picked for you — that&apos;s the whole idea.
+              </Text>
+            </View>
+          )}
+          <SpinPill full onPress={() => handleStartFocus(picked)}>
+            {picked.minutes === 0 ? 'Mark done · no focus needed' : (
+              <>
+                <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 17, color: t.colors.action.onPrimary }}>Start focus </Text>
+                <ArrowRight size={19} color={t.colors.action.onPrimary} strokeWidth={2} />
+              </>
+            )}
+          </SpinPill>
+          <Pressable onPress={() => { setPicked(null); spinWheel(); }} style={{ alignItems: 'center', paddingVertical: 14 }}>
+            <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 14, color: t.colors.text.secondary }}>Spin again</Text>
+          </Pressable>
+        </Sheet>
+      )}
+
+      {/* Spin limit sheet */}
+      {limitOpen && (
+        <Sheet onClose={() => setLimitOpen(false)}>
+          <Text style={{ fontFamily: FONTS.display, fontSize: 52, lineHeight: 56, color: t.colors.text.primary, marginBottom: 14 }}>
+            5 spins{'\n'}<Text style={{ color: t.colors.accent.main }}>done.</Text>
+          </Text>
+          <Text style={{ fontFamily: FONTS.sansLight, fontSize: 16, lineHeight: 24, color: t.colors.text.secondary, marginBottom: 24 }}>
+            Your wheel resets at midnight. Plenty more tomorrow.
+          </Text>
+          <BloomNudge label="Unlimited spins with Bloom" onPress={() => { setLimitOpen(false); setUpgradeOpen(true); }} />
+          <View style={{ height: 14 }} />
+          <SpinPill full onPress={() => setLimitOpen(false)}>Got it</SpinPill>
+        </Sheet>
+      )}
+
+      {(taskSheetOpen || editingTask) && (
+        <TaskSheet
+          task={editingTask ?? undefined}
           onAdd={handleAdd}
-          categories={categories}
-          onAddCategory={addCategory}
+          onSave={(id, name, mins, color, icon) => { updateTask(id, { name, minutes: mins, color, icon }); setEditingTask(null); }}
+          onClose={() => { setTaskSheetOpen(false); setEditingTask(null); }}
         />
       )}
-      {editingTask && (
-        <AddTaskSheet
-          task={editingTask}
-          onClose={() => setEditingTask(null)}
-          onAdd={handleAdd}
-          onSave={handleSave}
-          categories={categories}
-          onAddCategory={addCategory}
-        />
+
+      {breakdownTask && (
+        <AiSheet mode="breakdown" task={breakdownTask}
+          onClose={() => setBreakdownTask(null)}
+          onAdd={(items) => addCapped(items, breakdownTask.icon)} />
       )}
-      {showConfetti && <Confetti onDone={() => setShowConfetti(false)} />}
-      {pendingAchievementToast && (
-        <AchievementToast
-          label={pendingAchievementToast}
-          onDone={clearAchievementToast}
-        />
+
+      {voiceOpen && (
+        <AiSheet mode="voice"
+          onClose={() => setVoiceOpen(false)}
+          onGenerated={registerVoiceUse}
+          onAdd={(items) => addCapped(items)} />
       )}
-    </SafeAreaView>
+
+      <BrainStarter visible={brainOpen} onClose={() => setBrainOpen(false)} onFinished={registerBrainGame} />
+      <WeeklyRecap visible={recapOpen} onClose={() => setRecapOpen(false)} />
+      <UpgradeScreen visible={upgradeOpen} onClose={() => setUpgradeOpen(false)} onActivate={() => { activatePremium(); setUpgradeOpen(false); }} />
+      <FocusMode
+        visible={focusOpen || !!pomodoroSession}
+        onDone={(completed) => { setFocusOpen(false); if (completed) celebrate(); }}
+      />
+
+      <ConfettiBurst active={confetti} />
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: TOKENS.colors.bg.screen },
-  navBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: TOKENS.spacing.screenPad,
-    paddingTop: 12,
-    paddingBottom: 8,
+const styles = (t: ReturnType<typeof useTokens>) => StyleSheet.create({
+  banner: { backgroundColor: t.colors.bg.card, borderRadius: 20, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  bannerBadge: { width: 38, height: 38, borderRadius: 999, backgroundColor: t.colors.softs.coral, alignItems: 'center', justifyContent: 'center' },
+  bannerTitle: { fontFamily: FONTS.sansSemi, fontSize: 14.5, color: t.colors.text.primary },
+  bannerSub: { fontFamily: FONTS.sansLight, fontSize: 13, lineHeight: 18, color: t.colors.text.secondary, marginTop: 2 },
+  progressText: { fontFamily: FONTS.sansSemi, fontSize: 12, letterSpacing: 0.5, color: t.colors.text.secondary },
+  dotsWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: t.colors.bg.card, borderRadius: 100, paddingHorizontal: 16, paddingVertical: 7,
   },
-  navTitle: { fontSize: 26, fontWeight: '700', color: TOKENS.colors.text.primary, letterSpacing: 0.1 },
-  addFab: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: TOKENS.colors.action.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  dotsText: { fontFamily: FONTS.sans, fontSize: 12, color: t.colors.text.secondary, marginLeft: 3 },
+  metaText: { fontFamily: FONTS.sans, fontSize: 14, color: t.colors.text.secondary },
+  metaLink: { fontFamily: FONTS.sansMedium, fontSize: 14, color: t.colors.text.primary },
+  emptyText: { fontFamily: FONTS.sansLight, fontSize: 15, lineHeight: 23, color: t.colors.text.secondary, textAlign: 'center' },
+  dashedBtn: {
+    flex: 1, height: 48, borderRadius: 18, borderWidth: 1.5, borderStyle: 'dashed', borderColor: t.colors.hairline,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
   },
-  addFabText: { fontSize: 26, color: '#ffffff', lineHeight: 26 },
-  content: {
-    paddingHorizontal: TOKENS.spacing.screenPad,
-    paddingBottom: 4,
-    gap: TOKENS.spacing.rowGap,
+  dashedText: { fontFamily: FONTS.sansMedium, fontSize: 13, color: t.colors.text.secondary },
+  brainBtn: {
+    marginTop: 9, height: 44, borderRadius: 18, backgroundColor: t.colors.softs.lavender,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
   },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: TOKENS.colors.text.secondary,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    paddingTop: 4,
-  },
-
-  // Focus card
-  focusCard: {
-    backgroundColor: TOKENS.colors.action.primary,
-    borderRadius: TOKENS.radius.card,
-    padding: 20,
-    marginBottom: 4,
-  },
-  categoryBadge: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 100,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    alignSelf: 'flex-start',
-    marginTop: 6,
-  },
-  categoryBadgeText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.9)',
-    letterSpacing: 0.3,
-  },
-  focusingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  focusingDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
-  focusingTask: { fontSize: 20, fontWeight: '600', color: '#ffffff', flex: 1 },
-  timerText: {
-    marginTop: 12,
-    fontSize: 48,
-    fontWeight: '300',
-    color: '#ffffff',
-  },
-  progressTrack: {
-    marginTop: 12,
-    height: 3,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: { height: '100%', backgroundColor: TOKENS.colors.action.streak, borderRadius: 2 },
-  timerActions: { flexDirection: 'row', gap: 10, marginTop: 16 },
-  pauseBtn: {
-    flex: 1,
-    height: 44,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: TOKENS.radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pauseBtnText: { fontSize: 15, color: '#ffffff', fontWeight: '500' },
-  earlyDoneBtn: {
-    flex: 1,
-    height: 44,
-    backgroundColor: '#ffffff',
-    borderRadius: TOKENS.radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  earlyDoneBtnText: { fontSize: 15, color: TOKENS.colors.action.primary, fontWeight: '600' },
-
-  // Task cards
-  taskCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: TOKENS.colors.bg.card,
-    borderRadius: TOKENS.radius.row,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 10,
-  },
-  taskCardActive: {
-    opacity: 0.5,
-  },
-  taskDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
-  taskInfo: { flex: 1, gap: 2 },
-  taskName: { fontSize: 16, color: TOKENS.colors.text.primary, fontWeight: '500' },
-  taskCategory: { fontSize: 12, color: TOKENS.colors.text.muted, fontWeight: '500' },
-  taskMeta: { fontSize: 14, color: TOKENS.colors.text.secondary },
-  focusIconBtn: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  emptyHint: { textAlign: 'center', color: TOKENS.colors.text.secondary, fontSize: 15, marginTop: 8 },
-
-  // Stat card
-  statCard: {
-    backgroundColor: TOKENS.colors.bg.card,
-    borderRadius: TOKENS.radius.card,
-    flexDirection: 'row',
-    paddingVertical: 18,
-    marginTop: 4,
-  },
-  statItem: { flex: 1, alignItems: 'center', gap: 4 },
-  statValue: { fontSize: 24, fontWeight: '700', color: TOKENS.colors.text.primary },
-  statLabel: { fontSize: 12, color: TOKENS.colors.text.secondary },
-  statDivider: { width: 1, backgroundColor: '#e8e8e8' },
-});
-
-const sheet = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'flex-end',
-  },
-  panel: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: TOKENS.radius.sheet,
-    borderTopRightRadius: TOKENS.radius.sheet,
-    padding: 24,
-    paddingBottom: 48,
-  },
-  handleArea: {
-    width: '100%',
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 4,
-    marginBottom: 8,
-  },
-  handle: {
-    width: 72, height: 5, borderRadius: 3,
-    backgroundColor: '#e0e0e0',
-  },
-  title: { fontSize: 22, fontWeight: '700', color: TOKENS.colors.text.primary, marginBottom: 4 },
-  subtitle: { fontSize: 14, color: TOKENS.colors.text.secondary, marginBottom: 20 },
-  input: {
-    backgroundColor: TOKENS.colors.bg.input,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 17,
-    color: TOKENS.colors.text.primary,
-    marginBottom: 20,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: TOKENS.colors.text.secondary,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
-  colorRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  colorCircle: { width: 32, height: 32, borderRadius: 16 },
-  colorSelected: { borderWidth: 3, borderColor: '#111111' },
-  chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 20 },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 100,
-    backgroundColor: '#f0f0f0',
-  },
-  chipActive: { backgroundColor: TOKENS.colors.action.primary },
-  chipText: { fontSize: 14, color: TOKENS.colors.text.secondary, fontWeight: '500' },
-  chipTextActive: { color: '#ffffff' },
-  categoryInput: {
-    backgroundColor: '#f0f0f0',
-    borderRadius: 100,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: TOKENS.colors.text.primary,
-    minWidth: 100,
-  },
-  durationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
-  },
-  durationInput: {
-    fontSize: 48,
-    fontWeight: '700',
-    color: TOKENS.colors.text.primary,
-    backgroundColor: TOKENS.colors.bg.input,
-    borderRadius: 14,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    minWidth: 110,
-    textAlign: 'center',
-    letterSpacing: 2,
-  },
-  durationInputError: {
-    backgroundColor: '#fff0f0',
-    borderWidth: 1.5,
-    borderColor: TOKENS.colors.action.danger,
-  },
-  durationErrorText: {
-    fontSize: 12,
-    color: TOKENS.colors.action.danger,
-    marginBottom: 12,
-    marginTop: 2,
-  },
-  durationUnit: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: TOKENS.colors.text.secondary,
-  },
-  addBtn: {
-    height: 52,
-    backgroundColor: TOKENS.colors.action.primary,
-    borderRadius: 100,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  addBtnText: { fontSize: 17, color: '#ffffff', fontWeight: '600' },
+  brainText: { fontFamily: FONTS.sansMedium, fontSize: 13.5, color: t.colors.text.primary },
 });
