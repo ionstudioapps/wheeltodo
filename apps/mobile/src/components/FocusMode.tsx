@@ -22,6 +22,7 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
   const insets = useSafeAreaInsets();
   const {
     pomodoroSession, pausePomodoro, resumePomodoro, completePomodoro, cancelPomodoro, tickPomodoro,
+    resumedSession, consumeResumedSession,
   } = useApp();
 
   const [phase, setPhase] = useState<Phase>('prestart');
@@ -33,21 +34,35 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
   const doneRef = useRef(false);
   const taskNameRef = useRef(pomodoroSession?.taskName ?? '');
   if (pomodoroSession) taskNameRef.current = pomodoroSession.taskName;
+  // Since this Modal stays mounted and only toggles `visible`, the reset
+  // effect below re-fires each time it opens — capture "was this open
+  // triggered by a restored session" fresh at that moment, not at mount.
+  const resumedSessionRef = useRef(resumedSession);
+  resumedSessionRef.current = resumedSession;
 
-  // Reset per session
+  // Reset per session — unless we're opening onto an already-running/paused
+  // session restored from storage (app relaunch mid-focus), in which case
+  // skip the pre-start screen and drop straight into it.
   useEffect(() => {
     if (visible) {
-      setPhase('prestart');
+      if (resumedSessionRef.current) {
+        setPhase('session');
+        consumeResumedSession();
+      } else {
+        setPhase('prestart');
+      }
       setConfetti(false);
       setShowAbandon(false);
       doneRef.current = false;
       AsyncStorage.getItem(STUDY_KEY).then((v) => v && setStudyUrl(v)).catch(() => {});
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Hold the timer on the pre-start screen
+  // Hold the timer on the pre-start screen (not applicable to a resumed
+  // session, which should keep running/stay paused as it was).
   useEffect(() => {
-    if (visible && phase === 'prestart') pausePomodoro();
+    if (visible && phase === 'prestart' && !resumedSessionRef.current) pausePomodoro();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, phase]);
 

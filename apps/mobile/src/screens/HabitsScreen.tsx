@@ -6,6 +6,7 @@ import { useApp, FREE_LIMITS, type RestCategory, type RestTask } from '../contex
 import { FONTS } from '../theme/tokens';
 import { ConfettiField, Headline, Ring, SectionLabel, Sheet, SpinPill, cardShadow, useTokens } from '../components/kit';
 import { BloomChip, BloomNudge, UpgradeScreen } from '../components/Upgrade';
+import { Toast, useToast } from '../components/Toast';
 
 /* "Show up. Every day." — heatmap, stat cards, habit rows, 3-habit Seed cap. */
 
@@ -85,14 +86,8 @@ function HabitRow({ habit, streakDays, week, onToggle, onDelete }: {
   onToggle: () => void; onDelete: () => void;
 }) {
   const t = useTokens();
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const done = habit.completedToday;
   const color = categoryColor(t, habit.category);
-
-  function handleDelete() {
-    if (confirmDelete) onDelete();
-    else { setConfirmDelete(true); setTimeout(() => setConfirmDelete(false), 2500); }
-  }
 
   return (
     <View style={{
@@ -109,10 +104,8 @@ function HabitRow({ habit, streakDays, week, onToggle, onDelete }: {
         <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 16, color: done ? t.colors.text.muted : t.colors.text.primary }}>
           {habit.name}
         </Text>
-        <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, marginTop: 1, color: confirmDelete ? t.colors.action.danger : t.colors.text.secondary }}>
-          {confirmDelete
-            ? 'Tap again to delete'
-            : `${habit.category === 'My Tasks' ? 'Custom' : habit.category} · ${streakDays > 0 ? `${streakDays} day streak` : 'No streak yet'}`}
+        <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, marginTop: 1, color: t.colors.text.secondary }}>
+          {`${habit.category === 'My Tasks' ? 'Custom' : habit.category} · ${streakDays > 0 ? `${streakDays} day streak` : 'No streak yet'}`}
         </Text>
         <View style={{ flexDirection: 'row', gap: 6, marginTop: 9 }}>
           {week.map((f, i) => (
@@ -124,8 +117,8 @@ function HabitRow({ habit, streakDays, week, onToggle, onDelete }: {
           ))}
         </View>
       </View>
-      <Pressable hitSlop={8} onPress={handleDelete}>
-        <Trash2 size={15} color={confirmDelete ? t.colors.action.danger : t.colors.text.muted} strokeWidth={1.8} />
+      <Pressable hitSlop={8} onPress={onDelete}>
+        <Trash2 size={15} color={t.colors.text.muted} strokeWidth={1.8} />
       </Pressable>
       <Pressable hitSlop={8} onPress={onToggle} style={{
         width: 30, height: 30, borderRadius: 999,
@@ -152,8 +145,16 @@ export function HabitsScreen() {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [name, setName] = useState('');
   const [cat, setCat] = useState<RestCategory>('Physical');
+  const { toast, show: showToast, dismiss: dismissToast } = useToast();
 
   const habits = restTasks.filter((h) => !h.isPreset);
+
+  function handleDeleteHabit(habit: RestTask) {
+    removeRestTask(habit.id);
+    showToast(`"${habit.name}" deleted`, () => {
+      addRestTask(habit.name, habit.durationMinutes, habit.category);
+    });
+  }
 
   // Seed three starter habits on first visit
   useEffect(() => {
@@ -251,7 +252,7 @@ export function HabitsScreen() {
                 streakDays={habitStreak(h.id)}
                 week={weekFor(h.id)}
                 onToggle={() => toggleRestTask(h.id)}
-                onDelete={() => removeRestTask(h.id)}
+                onDelete={() => handleDeleteHabit(h)}
               />
             ))}
 
@@ -338,6 +339,7 @@ export function HabitsScreen() {
       )}
 
       <UpgradeScreen visible={upgradeOpen} onClose={() => setUpgradeOpen(false)} onActivate={() => { activatePremium(); setUpgradeOpen(false); }} />
+      <Toast toast={toast} onUndo={() => { toast?.onUndo?.(); dismissToast(); }} onDismiss={dismissToast} />
     </View>
   );
 }

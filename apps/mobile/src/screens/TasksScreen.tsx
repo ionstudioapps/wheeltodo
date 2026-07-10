@@ -13,6 +13,7 @@ import { FocusMode } from '../components/FocusMode';
 import { WeeklyRecap } from '../components/WeeklyRecap';
 import { BrainStarter } from '../components/BrainStarter';
 import { BloomChip, BloomNudge, UpgradeScreen } from '../components/Upgrade';
+import { Toast, useToast } from '../components/Toast';
 import { TUTORIAL_TASKS, isTutorialTask, tutorialStepFor } from '../utils/tutorial';
 import { fnUrl, fnHeaders } from '../utils/functions';
 
@@ -49,13 +50,7 @@ function TaskRow({ task, dim, remainingLabel, onComplete, onDelete, onEdit }: {
   onComplete: () => void; onDelete: () => void; onEdit: () => void;
 }) {
   const t = useTokens();
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const tut = isTutorialTask(task.id) ? tutorialStepFor(task.id) : undefined;
-
-  function handleDelete() {
-    if (confirmDelete) onDelete();
-    else { setConfirmDelete(true); setTimeout(() => setConfirmDelete(false), 2500); }
-  }
 
   return (
     <Pressable onPress={onEdit} style={{
@@ -69,21 +64,19 @@ function TaskRow({ task, dim, remainingLabel, onComplete, onDelete, onEdit }: {
         <Text numberOfLines={1} style={{ fontFamily: FONTS.sansMedium, fontSize: 16, color: t.colors.text.primary }}>
           {task.name}
         </Text>
-        <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, marginTop: 1, color: confirmDelete ? t.colors.action.danger : t.colors.text.secondary }}>
-          {confirmDelete
-            ? 'Tap again to delete'
-            : tut
-              ? `${task.minutes > 0 ? `${task.minutes} min · ` : ''}${tut.feature}`
-              : remainingLabel ?? `${task.minutes} min`}
+        <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, marginTop: 1, color: t.colors.text.secondary }}>
+          {tut
+            ? `${task.minutes > 0 ? `${task.minutes} min · ` : ''}${tut.feature}`
+            : remainingLabel ?? `${task.minutes} min`}
         </Text>
       </View>
-      {tut && !confirmDelete && (
+      {tut && (
         <View style={{ backgroundColor: t.colors.softs.coral, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}>
           <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 11, color: t.colors.accent.main }}>{tut.feature}</Text>
         </View>
       )}
-      <Pressable hitSlop={8} onPress={handleDelete}>
-        <Trash2 size={16} color={confirmDelete ? t.colors.action.danger : t.colors.text.muted} strokeWidth={1.8} />
+      <Pressable hitSlop={8} onPress={onDelete}>
+        <Trash2 size={16} color={t.colors.text.muted} strokeWidth={1.8} />
       </Pressable>
       <Pressable hitSlop={8} onPress={onComplete} style={{
         width: 26, height: 26, borderRadius: 999, borderWidth: 1.5, borderColor: t.colors.hairline,
@@ -368,10 +361,15 @@ export function TasksScreen() {
   const [recapOpen, setRecapOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [limitOpen, setLimitOpen] = useState(false);
-  const [focusOpen, setFocusOpen] = useState(false);
+  // If a focus session was already running/paused when this mounted (restored
+  // from storage), keep FocusMode visible through completion — otherwise it
+  // would vanish the instant an auto-completed session clears pomodoroSession,
+  // and the user never sees the "In bloom." moment.
+  const [focusOpen, setFocusOpen] = useState(() => pomodoroSession !== null);
   const [confetti, setConfetti] = useState(false);
   const [picked, setPicked] = useState<Task | null>(null);
   const [spinning, setSpinning] = useState(false);
+  const { toast, show: showToast, dismiss: dismissToast } = useToast();
 
   const rotation = useRef(new Animated.Value(0)).current;
   const rotationRef = useRef(0);
@@ -445,6 +443,13 @@ export function TasksScreen() {
     if (task.minutes === 0) { handleDone(task); return; }
     startPomodoro(task);
     setFocusOpen(true);
+  }
+
+  function handleDeleteTask(task: Task) {
+    deleteTask(task.id);
+    showToast(`"${task.name}" deleted`, () => {
+      addTask({ name: task.name, minutes: task.minutes, color: task.color, icon: task.icon, category: task.category });
+    });
   }
 
   function handleAdd(name: string, mins: number, color: string, icon: string) {
@@ -593,7 +598,7 @@ export function TasksScreen() {
                   dim={picked?.id === task.id}
                   remainingLabel={taskProgress[task.id] != null ? `${formatMmSs(taskProgress[task.id])} left` : undefined}
                   onComplete={() => handleDone(task)}
-                  onDelete={() => deleteTask(task.id)}
+                  onDelete={() => handleDeleteTask(task)}
                   onEdit={() => setEditingTask(task)}
                 />
               ))}
@@ -743,6 +748,7 @@ export function TasksScreen() {
       />
 
       <ConfettiBurst active={confetti} />
+      <Toast toast={toast} onUndo={() => { toast?.onUndo?.(); dismissToast(); }} onDismiss={dismissToast} />
     </View>
   );
 }

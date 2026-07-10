@@ -13,6 +13,7 @@ import { FocusMode } from "@/components/FocusMode";
 import { WeeklyRecap } from "@/components/WeeklyRecap";
 import { BrainStarter } from "@/components/BrainStarter";
 import { UpgradeScreen, BloomNudge } from "@/components/Upgrade";
+import { Toast, useToast } from "@/components/ui/Toast";
 
 /* ── Add / edit task sheet ───────────────────────────────────────────────── */
 
@@ -151,14 +152,7 @@ function TaskRow({ task, dim, displayTime, onComplete, onDelete, onEdit }: {
   task: Task; dim?: boolean; displayTime?: string;
   onComplete: () => void; onDelete: () => void; onEdit: () => void;
 }) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const tut = isTutorialTask(task.id) ? tutorialStepFor(task.id) : undefined;
-
-  function handleDelete(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (confirmDelete) onDelete();
-    else { setConfirmDelete(true); setTimeout(() => setConfirmDelete(false), 2500); }
-  }
 
   return (
     <div onClick={onEdit} style={{
@@ -176,16 +170,16 @@ function TaskRow({ task, dim, displayTime, onComplete, onDelete, onEdit }: {
       )}
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "block", fontSize: 16, fontWeight: 500, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{task.name}</span>
-        <span style={{ display: "block", fontSize: 13, fontWeight: 300, color: confirmDelete ? "var(--action-danger)" : "var(--text-secondary)", marginTop: 1 }}>
-          {confirmDelete ? "Tap again to delete" : tut ? `${task.minutes > 0 ? `${task.minutes} min · ` : ""}${tut.feature}` : (displayTime ?? `${task.minutes} min`)}
+        <span style={{ display: "block", fontSize: 13, fontWeight: 300, color: "var(--text-secondary)", marginTop: 1 }}>
+          {tut ? `${task.minutes > 0 ? `${task.minutes} min · ` : ""}${tut.feature}` : (displayTime ?? `${task.minutes} min`)}
         </span>
       </span>
-      {tut && !confirmDelete && (
+      {tut && (
         <span style={{ display: "inline-flex", padding: "3px 9px", borderRadius: 999, flexShrink: 0, background: "var(--c-coral-soft)", fontSize: 11, fontWeight: 600, color: "var(--accent)" }}>
           {tut.feature}
         </span>
       )}
-      <button onClick={handleDelete} aria-label="Delete task" style={{ border: "none", background: "none", cursor: "pointer", padding: 4, color: confirmDelete ? "var(--action-danger)" : "var(--text-muted)", flexShrink: 0 }}>
+      <button onClick={(e) => { e.stopPropagation(); onDelete(); }} aria-label="Delete task" style={{ border: "none", background: "none", cursor: "pointer", padding: 4, color: "var(--text-muted)", flexShrink: 0 }}>
         <WIcon name="trash" size={16} stroke={1.8} />
       </button>
       <button onClick={(e) => { e.stopPropagation(); onComplete(); }} aria-label="Mark done" style={{
@@ -515,9 +509,14 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [limitOpen, setLimitOpen] = useState(false);
   const [confetti, setConfetti] = useState(false);
-  const [focusOpen, setFocusOpen] = useState(false);
+  // If a focus session was already running/paused when this mounted (restored
+  // from storage), keep FocusMode mounted through completion — otherwise it
+  // would vanish the instant an auto-completed session clears pomodoroSession,
+  // and the user never sees the "In bloom." moment.
+  const [focusOpen, setFocusOpen] = useState(() => pomodoroSession !== null);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [brainOpen, setBrainOpen] = useState(false);
+  const { toast, show: showToast, dismiss: dismissToast } = useToast();
 
   // Wheel state
   const [rotation, setRotation] = useState(0);
@@ -635,6 +634,13 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
     if (task.minutes === 0) { handleDone(task); return; }
     startPomodoro(task);
     setFocusOpen(true);
+  }
+
+  function handleDeleteTask(task: Task) {
+    deleteTask(task.id);
+    showToast(`"${task.name}" deleted`, () => {
+      addTask({ name: task.name, minutes: task.minutes, color: task.color, icon: task.icon, category: task.category });
+    });
   }
 
   const slices = tasks.map((t) => ({
@@ -779,7 +785,7 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
                     dim={picked?.id === task.id}
                     displayTime={taskProgress[task.id] != null ? `${formatMmSs(taskProgress[task.id])} left` : undefined}
                     onComplete={() => handleDone(task)}
-                    onDelete={() => deleteTask(task.id)}
+                    onDelete={() => handleDeleteTask(task)}
                     onEdit={() => setEditingTask(task)}
                   />
                 ))}
@@ -967,6 +973,7 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
 
       <ConfettiBurst active={confetti} />
       {confetti && <ResetConfetti onReset={() => setConfetti(false)} />}
+      <Toast toast={toast} onUndo={() => { toast?.onUndo?.(); dismissToast(); }} onDismiss={dismissToast} />
     </div>
   );
 }

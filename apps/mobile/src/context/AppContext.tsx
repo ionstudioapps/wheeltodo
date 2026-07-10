@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode, useRef } from 'react';
 import { getSupabaseClient, dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted, dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings } from '@todo/shared';
 import type { ThemeName } from '@todo/shared/themes';
@@ -31,6 +32,10 @@ export interface PomodoroSession {
   totalSeconds: number;
   remainingSeconds: number;
   isRunning: boolean;
+  // Epoch ms this countdown hits zero, present only while isRunning. Lets us
+  // recompute remainingSeconds from wall-clock time on app foreground/relaunch
+  // instead of a naive decrement that just stalls while backgrounded.
+  endsAt?: number;
 }
 
 export type RestCategory = 'Physical' | 'Mental' | 'Social' | 'Nourishment' | 'My Tasks';
@@ -90,6 +95,11 @@ interface AppContextType {
   resumePomodoro: () => void;
   completePomodoro: () => void;
   tickPomodoro: () => void;
+  // True for one render after a running/paused session was restored from
+  // storage (cold start, or app relaunch mid-session). FocusMode reads this
+  // once to skip the pre-start screen and drop straight into the session.
+  resumedSession: boolean;
+  consumeResumedSession: () => void;
 
   defaultTimerMinutes: number;
   setDefaultTimerMinutes: (minutes: number) => void;
@@ -214,6 +224,8 @@ const STORAGE_KEYS = {
   lastBrainGameAt: 'wheelTodo.lastBrainGameAt',
   habitHistory: 'wheelTodo.habitHistory',
   notifPrefs: 'wheelTodo.notifPrefs',
+  pomodoroSession: 'wheelTodo.pomodoroSession',
+  taskProgress: 'wheelTodo.taskProgress',
 } as const;
 
 const DEFAULT_CATEGORIES = ['Work', 'Personal', 'Learning', 'Health'];
@@ -265,6 +277,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lastBrainGameAt, setLastBrainGameAt] = useState<string | null>(null);
   const [habitHistory, setHabitHistory] = useState<Record<string, string[]>>({});
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({ nudge: true, focus: true, recap: true });
+  const [resumedSession, setResumedSession] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -276,6 +289,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           STORAGE_KEYS.categories,
         ]);
         if (tasksRaw) setTasks(JSON.parse(tasksRaw));
+
+        // Restore an in-flight focus session, correcting for wall-clock time
+        // elapsed while the app was backgrounded, suspended, or fully killed.
+        const [[, sessionRaw], [, progressRaw]] = await AsyncStorage.multiGet([
+          STORAGE_KEYS.pomodoroSession,
+          STORAGE_KEYS.taskProgress,
+        ]);
+        if (sessionRaw) {
+          const saved = JSON.parse(sessionRaw) as PomodoroSession;
+          const restored = saved.isRunning && saved.endsAt
+            ? { ...saved, remainingSeconds: Math.max(0, Math.round((saved.endsAt - Date.now()) / 1000)) }
+            : saved;
+          setPomodoroSession(restored);
+          setResumedSession(true);
+        }
+        if (progressRaw) setTaskProgress(JSON.parse(progressRaw));
         if (completedRaw) {
           setCompletedTasks(
             (JSON.parse(completedRaw) as any[]).map((t) => ({
@@ -393,6 +422,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [user, loaded]);
 
+  useEffect(() => {
+    if (!loaded) return;
+    if (pomodoroSession) AsyncStorage.setItem(STORAGE_KEYS.pomodoroSession, JSON.stringify(pomodoroSession)).catch(() => {});
+    else AsyncStorage.removeItem(STORAGE_KEYS.pomodoroSession).catch(() => {});
+  }, [pomodoroSession, loaded]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    AsyncStorage.setItem(STORAGE_KEYS.taskProgress, JSON.stringify(taskProgress)).catch(() => {});
+  }, [taskProgress, loaded]);
+
   const addTask = (task: Omit<Task, 'id'>) => {
     const newTask = { ...task, id: Date.now().toString() };
     setTasks((prev) => [...prev, newTask]);
@@ -459,29 +499,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTaskProgress((prev) => ({ ...prev, [pomodoroSession.taskId]: pomodoroSession.remainingSeconds }));
     }
     const savedRemaining = taskProgress[task.id];
+    const remainingSeconds = savedRemaining ?? totalSeconds;
     setPomodoroSession({
       taskId: task.id,
       taskName: task.name,
       totalSeconds,
-      remainingSeconds: savedRemaining ?? totalSeconds,
+      remainingSeconds,
       isRunning: true,
+      endsAt: Date.now() + remainingSeconds * 1000,
     });
   };
 
   const pausePomodoro = () => {
-    setPomodoroSession((s) => (s ? { ...s, isRunning: false } : null));
+    setPomodoroSession((s) => {
+      if (!s) return null;
+      const remainingSeconds = s.isRunning && s.endsAt
+        ? Math.max(0, Math.round((s.endsAt - Date.now()) / 1000))
+        : s.remainingSeconds;
+      return { ...s, remainingSeconds, isRunning: false, endsAt: undefined };
+    });
   };
 
   const resumePomodoro = () => {
-    setPomodoroSession((s) => (s ? { ...s, isRunning: true } : null));
+    setPomodoroSession((s) => (s ? { ...s, isRunning: true, endsAt: Date.now() + s.remainingSeconds * 1000 } : null));
   };
 
   const completePomodoro = () => {
     if (!pomodoroSession) return;
     const { taskId } = pomodoroSession;
-    const minutesActual = Math.ceil(
-      (pomodoroSession.totalSeconds - pomodoroSession.remainingSeconds) / 60
-    );
+    const remainingSeconds = pomodoroSession.isRunning && pomodoroSession.endsAt
+      ? Math.max(0, Math.round((pomodoroSession.endsAt - Date.now()) / 1000))
+      : pomodoroSession.remainingSeconds;
+    const minutesActual = Math.max(1, Math.ceil((pomodoroSession.totalSeconds - remainingSeconds) / 60));
     completeTask(taskId, minutesActual);
     deleteTask(taskId);
     setPomodoroSession(null);
@@ -494,18 +543,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const cancelPomodoro = useCallback(() => {
     setPomodoroSession((s) => {
-      if (s) setTaskProgress((prev) => ({ ...prev, [s.taskId]: s.remainingSeconds }));
+      if (s) {
+        const remainingSeconds = s.isRunning && s.endsAt
+          ? Math.max(0, Math.round((s.endsAt - Date.now()) / 1000))
+          : s.remainingSeconds;
+        setTaskProgress((prev) => ({ ...prev, [s.taskId]: remainingSeconds }));
+      }
       return null;
     });
   }, []);
 
+  // Wall-clock based: recomputes from endsAt rather than decrementing by one,
+  // so a suspended/backgrounded app self-corrects instead of drifting.
   const tickPomodoro = useCallback(() => {
-    setPomodoroSession((s) =>
-      s && s.isRunning && s.remainingSeconds > 0
-        ? { ...s, remainingSeconds: s.remainingSeconds - 1 }
-        : s
-    );
+    setPomodoroSession((s) => {
+      if (!s || !s.isRunning || !s.endsAt) return s;
+      const remainingSeconds = Math.max(0, Math.round((s.endsAt - Date.now()) / 1000));
+      return remainingSeconds === s.remainingSeconds ? s : { ...s, remainingSeconds };
+    });
   }, []);
+
+  const consumeResumedSession = useCallback(() => setResumedSession(false), []);
+
+  // Correct the countdown the instant the app returns to the foreground,
+  // rather than waiting for the next 1s interval tick.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') tickPomodoro();
+    });
+    return () => sub.remove();
+  }, [tickPomodoro]);
 
   // Restore Supabase session on mount.
   // getSupabaseClient throws when EXPO_PUBLIC_SUPABASE_* env vars are absent —
@@ -995,6 +1062,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     tasks, addTask, updateTask, deleteTask,
     completedTasks, completeTask, uncompleteTask,
     pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, tickPomodoro,
+    resumedSession, consumeResumedSession,
     defaultTimerMinutes, setDefaultTimerMinutes,
     dailyGoal, setDailyGoal,
     notificationsEnabled, setNotificationsEnabled,

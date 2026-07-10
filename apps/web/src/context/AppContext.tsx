@@ -46,6 +46,11 @@ export interface PomodoroSession {
   totalSeconds: number;
   remainingSeconds: number;
   isRunning: boolean;
+  // Epoch ms this countdown will hit zero, present only while isRunning.
+  // Lets us recompute remainingSeconds from wall-clock time instead of a
+  // naive per-tick decrement, so the timer stays correct across backgrounded
+  // tabs, sleep, and full reloads instead of silently stalling.
+  endsAt?: number;
 }
 
 export type RestCategory = "Physical" | "Mental" | "Social" | "Nourishment" | "My Tasks";
@@ -141,6 +146,11 @@ interface AppContextType {
   completePomodoro: () => void;
   cancelPomodoro: () => void;
   tickPomodoro: () => void;
+  // True for one render after a running/paused session was restored from
+  // storage (reload, or reopening the app mid-session). FocusMode reads this
+  // once to skip the pre-start screen and drop straight into the session.
+  resumedSession: boolean;
+  consumeResumedSession: () => void;
 
   dailyGoal: number;
   setDailyGoal: (goal: number) => void;
@@ -257,6 +267,8 @@ const KEYS = {
   lastBrainGameAt: "wt.lastBrainGameAt",
   habitHistory: "wt.habitHistory",
   notifPrefs: "wt.notifPrefs",
+  pomodoroSession: "wt.pomodoroSession",
+  taskProgress: "wt.taskProgress",
 } as const;
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -269,6 +281,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const [completedTasks, setCompletedTasks] = useState<CompletedTask[]>([]);
   const [pomodoroSession, setPomodoroSession] = useState<PomodoroSession | null>(null);
   const [taskProgress, setTaskProgress] = useState<Record<string, number>>({});
+  const [resumedSession, setResumedSession] = useState(false);
   const [dailyGoal, setDailyGoalState] = useState(6);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [spinCount, setSpinCount] = useState(0);
@@ -299,6 +312,19 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
 
     const rawCompleted = ls<Array<CompletedTask & { completedAt: string }>>(KEYS.completedTasks, []);
     setCompletedTasks(rawCompleted.map((t) => ({ ...t, completedAt: new Date(t.completedAt) })));
+
+    // Restore an in-flight focus session, correcting for wall-clock time
+    // elapsed while this tab/window wasn't running (backgrounded, or a full
+    // reload). Without this the countdown just silently stalls on reopen.
+    const savedSession = ls<PomodoroSession | null>(KEYS.pomodoroSession, null);
+    if (savedSession) {
+      const restored = savedSession.isRunning && savedSession.endsAt
+        ? { ...savedSession, remainingSeconds: Math.max(0, Math.round((savedSession.endsAt - Date.now()) / 1000)) }
+        : savedSession;
+      setPomodoroSession(restored);
+      setResumedSession(true);
+    }
+    setTaskProgress(ls<Record<string, number>>(KEYS.taskProgress, {}));
 
     setCategories(ls<string[]>(KEYS.categories, DEFAULT_CATEGORIES));
     setSpinCount(ls<number>(KEYS.spinCount, 0));
@@ -370,6 +396,12 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   // Persist whenever state changes
   useEffect(() => { if (loaded) lsSet(KEYS.tasks, tasks); }, [tasks, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.completedTasks, completedTasks); }, [completedTasks, loaded]);
+  useEffect(() => {
+    if (!loaded) return;
+    if (pomodoroSession) lsSet(KEYS.pomodoroSession, pomodoroSession);
+    else localStorage.removeItem(KEYS.pomodoroSession);
+  }, [pomodoroSession, loaded]);
+  useEffect(() => { if (loaded) lsSet(KEYS.taskProgress, taskProgress); }, [taskProgress, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.categories, categories); }, [categories, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.spinCount, spinCount); }, [spinCount, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.dailyGoal, dailyGoal); }, [dailyGoal, loaded]);
@@ -480,30 +512,38 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
       setTaskProgress((prev) => ({ ...prev, [pomodoroSession.taskId]: pomodoroSession.remainingSeconds }));
     }
     const savedRemaining = taskProgress[task.id];
+    const remainingSeconds = savedRemaining ?? totalSeconds;
     setPomodoroSession({
       taskId: task.id,
       taskName: task.name,
       totalSeconds,
-      remainingSeconds: savedRemaining ?? totalSeconds,
+      remainingSeconds,
       isRunning: true,
+      endsAt: Date.now() + remainingSeconds * 1000,
     });
   };
 
   const pausePomodoro = () => {
-    setPomodoroSession((s) => (s ? { ...s, isRunning: false } : null));
+    setPomodoroSession((s) => {
+      if (!s) return null;
+      const remainingSeconds = s.isRunning && s.endsAt
+        ? Math.max(0, Math.round((s.endsAt - Date.now()) / 1000))
+        : s.remainingSeconds;
+      return { ...s, remainingSeconds, isRunning: false, endsAt: undefined };
+    });
   };
 
   const resumePomodoro = () => {
-    setPomodoroSession((s) => (s ? { ...s, isRunning: true } : null));
+    setPomodoroSession((s) => (s ? { ...s, isRunning: true, endsAt: Date.now() + s.remainingSeconds * 1000 } : null));
   };
 
   const completePomodoro = () => {
     if (!pomodoroSession) return;
     const { taskId } = pomodoroSession;
-    const minutesActual = Math.max(
-      1,
-      Math.ceil((pomodoroSession.totalSeconds - pomodoroSession.remainingSeconds) / 60)
-    );
+    const remainingSeconds = pomodoroSession.isRunning && pomodoroSession.endsAt
+      ? Math.max(0, Math.round((pomodoroSession.endsAt - Date.now()) / 1000))
+      : pomodoroSession.remainingSeconds;
+    const minutesActual = Math.max(1, Math.ceil((pomodoroSession.totalSeconds - remainingSeconds) / 60));
     completeTask(taskId, minutesActual);
     deleteTask(taskId);
     setPomodoroSession(null);
@@ -516,18 +556,42 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
 
   const cancelPomodoro = useCallback(() => {
     setPomodoroSession((s) => {
-      if (s) setTaskProgress((prev) => ({ ...prev, [s.taskId]: s.remainingSeconds }));
+      if (s) {
+        const remainingSeconds = s.isRunning && s.endsAt
+          ? Math.max(0, Math.round((s.endsAt - Date.now()) / 1000))
+          : s.remainingSeconds;
+        setTaskProgress((prev) => ({ ...prev, [s.taskId]: remainingSeconds }));
+      }
       return null;
     });
   }, []);
 
+  // Wall-clock based: recomputes from endsAt rather than decrementing by one,
+  // so a throttled/backgrounded interval self-corrects instead of drifting.
   const tickPomodoro = useCallback(() => {
-    setPomodoroSession((s) =>
-      s && s.isRunning && s.remainingSeconds > 0
-        ? { ...s, remainingSeconds: s.remainingSeconds - 1 }
-        : s
-    );
+    setPomodoroSession((s) => {
+      if (!s || !s.isRunning || !s.endsAt) return s;
+      const remainingSeconds = Math.max(0, Math.round((s.endsAt - Date.now()) / 1000));
+      return remainingSeconds === s.remainingSeconds ? s : { ...s, remainingSeconds };
+    });
   }, []);
+
+  const consumeResumedSession = useCallback(() => setResumedSession(false), []);
+
+  // Correct the countdown the instant the tab regains focus, rather than
+  // waiting for the next 1s interval tick (which may itself have been
+  // throttled while backgrounded).
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible") tickPomodoro();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [tickPomodoro]);
 
   // ─── Rest timer ──────────────────────────────────────────────────────────────
 
@@ -808,6 +872,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     tasks, seedTasks, addTask, updateTask, deleteTask,
     completedTasks, completeTask, uncompleteTask,
     pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, cancelPomodoro, tickPomodoro,
+    resumedSession, consumeResumedSession,
     dailyGoal, setDailyGoal,
     defaultTimerMinutes, setDefaultTimerMinutes,
     categories, addCategory, removeCategory,

@@ -142,9 +142,19 @@ type Phase = "prestart" | "session" | "complete";
 export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) {
   const {
     pomodoroSession, pausePomodoro, resumePomodoro, completePomodoro, cancelPomodoro, tickPomodoro, notifPrefs,
+    resumedSession, consumeResumedSession,
   } = useApp();
 
-  const [phase, setPhase] = useState<Phase>("prestart");
+  // Captured once at mount: were we reopened onto an already-running/paused
+  // session (reload, or app relaunch) rather than a fresh "Start focus" tap?
+  // If so, skip the pre-start screen entirely.
+  const wasResumedRef = useRef(resumedSession);
+  const [phase, setPhase] = useState<Phase>(() => (wasResumedRef.current ? "session" : "prestart"));
+
+  useEffect(() => {
+    if (wasResumedRef.current) consumeResumedSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [showTimer, setShowTimer] = useState(true);
   const [showAbandon, setShowAbandon] = useState(false);
   // Study Double — a study-with-me video that opens alongside the session
@@ -162,9 +172,10 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
     spentRef.current = Math.max(1, Math.round((pomodoroSession.totalSeconds - pomodoroSession.remainingSeconds) / 60));
   }
 
-  // Hold the timer while on the pre-start screen
+  // Hold the timer while on the pre-start screen (not applicable to a
+  // resumed session, which should keep running/stay paused as it was).
   useEffect(() => {
-    if (phase === "prestart") pausePomodoro();
+    if (phase === "prestart" && !wasResumedRef.current) pausePomodoro();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 

@@ -5,6 +5,7 @@ import { useApp, FREE_LIMITS, type RestTask, type RestCategory } from "@/context
 import { useSubscription } from "@/hooks/useSubscription";
 import { WIcon, Headline, SpinPill, Sheet, SectionLabel, ConfettiField } from "@/components/ui/kit";
 import { UpgradeScreen, BloomNudge } from "@/components/Upgrade";
+import { Toast, useToast } from "@/components/ui/Toast";
 
 /* Category → palette accent (CSS vars only) */
 const CATEGORY_META: { id: RestCategory; label: string; colorVar: string }[] = [
@@ -90,16 +91,9 @@ function HabitRow({ habit, streakDays, week, onToggle, onDelete }: {
   habit: RestTask; streakDays: number; week: boolean[];
   onToggle: () => void; onDelete: () => void;
 }) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const done = habit.completedToday;
   const color = `var(${categoryVar(habit.category)})`;
   const initial = habit.name.trim()[0]?.toUpperCase() ?? "?";
-
-  function handleDelete(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (confirmDelete) onDelete();
-    else { setConfirmDelete(true); setTimeout(() => setConfirmDelete(false), 2500); }
-  }
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14, background: "var(--bg-card)", borderRadius: "var(--r-row)", padding: "16px 16px", boxShadow: "var(--shadow-card)" }}>
@@ -108,10 +102,8 @@ function HabitRow({ habit, streakDays, week, onToggle, onDelete }: {
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 16, fontWeight: 500, color: done ? "var(--text-muted)" : "var(--text-primary)" }}>{habit.name}</div>
-        <div style={{ fontSize: 13, fontWeight: 300, color: confirmDelete ? "var(--action-danger)" : "var(--text-secondary)", marginTop: 1 }}>
-          {confirmDelete
-            ? "Tap again to delete"
-            : `${habit.category === "My Tasks" ? "Custom" : habit.category} · ${streakDays > 0 ? `${streakDays} day streak` : "No streak yet"}`}
+        <div style={{ fontSize: 13, fontWeight: 300, color: "var(--text-secondary)", marginTop: 1 }}>
+          {`${habit.category === "My Tasks" ? "Custom" : habit.category} · ${streakDays > 0 ? `${streakDays} day streak` : "No streak yet"}`}
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 9 }}>
           {week.map((f, i) => (
@@ -123,7 +115,7 @@ function HabitRow({ habit, streakDays, week, onToggle, onDelete }: {
           ))}
         </div>
       </div>
-      <button onClick={handleDelete} aria-label="Delete habit" style={{ border: "none", background: "none", cursor: "pointer", padding: 4, color: confirmDelete ? "var(--action-danger)" : "var(--text-muted)", flexShrink: 0 }}>
+      <button onClick={(e) => { e.stopPropagation(); onDelete(); }} aria-label="Delete habit" style={{ border: "none", background: "none", cursor: "pointer", padding: 4, color: "var(--text-muted)", flexShrink: 0 }}>
         <WIcon name="trash" size={15} stroke={1.8} />
       </button>
       <button onClick={onToggle} aria-label={done ? "Mark not done" : "Mark done"} className="wt-press" style={{
@@ -148,6 +140,14 @@ export function HabitsTab() {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [name, setName] = useState("");
   const [cat, setCat] = useState<RestCategory>("Physical");
+  const { toast, show: showToast, dismiss: dismissToast } = useToast();
+
+  function handleDeleteHabit(habit: RestTask) {
+    removeRestTask(habit.id);
+    showToast(`"${habit.name}" deleted`, () => {
+      addRestTask(habit.name, habit.durationMinutes, habit.color, habit.icon, habit.category);
+    });
+  }
 
   const habits = restTasks.filter((t) => !t.isPreset);
 
@@ -254,7 +254,7 @@ export function HabitsTab() {
                 streakDays={habitStreak(h.id)}
                 week={weekFor(h.id)}
                 onToggle={() => toggleRestTask(h.id)}
-                onDelete={() => removeRestTask(h.id)}
+                onDelete={() => handleDeleteHabit(h)}
               />
             ))}
 
@@ -342,6 +342,7 @@ export function HabitsTab() {
       )}
 
       {upgradeOpen && <UpgradeScreen onClose={() => setUpgradeOpen(false)} onActivate={() => { void activate(); setUpgradeOpen(false); }} />}
+      <Toast toast={toast} onUndo={() => { toast?.onUndo?.(); dismissToast(); }} onDismiss={dismissToast} />
     </div>
   );
 }
