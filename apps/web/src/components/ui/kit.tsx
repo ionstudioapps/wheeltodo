@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 
 /* ── Icons (Lucide-style, stroked, currentColor) ─────────────────────────────
    Ported from the design kit (wheel/kit.jsx). */
@@ -238,16 +238,24 @@ export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, 
 
   // Tick feedback: each time a slice boundary passes the pointer, kick the
   // pointer back briefly. Crossings are dense early in the spin (pointer
-  // stays deflected) and sparse as it decelerates (distinct ticks).
+  // stays deflected) and sparse as it decelerates (distinct ticks). Animated
+  // directly on the DOM node — at ~dozens of crossings per spin, re-rendering
+  // per tick would be wasteful.
   const sliceDeg = 360 / n;
   const tickIndex = Math.floor((((rotation % 360) + 360) % 360) / sliceDeg);
   const prevTickIndex = useRef(tickIndex);
-  const [pointerKick, setPointerKick] = useState(false);
+  const pointerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (tickIndex === prevTickIndex.current) return;
     prevTickIndex.current = tickIndex;
-    setPointerKick(true);
-    const id = setTimeout(() => setPointerKick(false), 70);
+    const el = pointerRef.current;
+    if (!el) return;
+    el.style.transition = "transform 40ms ease-out";
+    el.style.transform = "rotate(-13deg)";
+    const id = setTimeout(() => {
+      el.style.transition = "transform 140ms var(--ease-out)";
+      el.style.transform = "rotate(0deg)";
+    }, 70);
     return () => clearTimeout(id);
   }, [tickIndex]);
 
@@ -270,11 +278,9 @@ export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, 
   return (
     <div style={{ position: "relative", width: size, height: size + 14, display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
       {/* pointer */}
-      <div style={{
+      <div ref={pointerRef} style={{
         position: "absolute", top: 0, zIndex: 4, filter: "drop-shadow(0 2px 2px var(--bg-overlay))",
-        transform: pointerKick ? "rotate(-13deg)" : "rotate(0deg)",
         transformOrigin: "50% 15%",
-        transition: pointerKick ? "transform 40ms ease-out" : "transform 140ms var(--ease-out)",
       }}>
         <svg width="26" height="20" viewBox="0 0 26 20"><path d="M13 19 L24 2 H2 Z" fill="var(--ink)" /></svg>
       </div>
