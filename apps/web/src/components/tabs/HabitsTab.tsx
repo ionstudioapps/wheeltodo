@@ -68,35 +68,6 @@ function Heatmap({ countsByDay }: { countsByDay: Map<string, number> }) {
   );
 }
 
-/* ── Quick rest chip ──────────────────────────────────────────────────────
-   The ten preset rest activities (Get a coffee, Go for a walk, ...) — a
-   no-commitment, one-tap way to log rest without adding a tracked habit.
-   Still counts toward restMinutesToday / the day's streak. ────────────── */
-
-function QuickRestChip({ task, onToggle }: { task: RestTask; onToggle: () => void }) {
-  const done = task.completedToday;
-  const color = `var(${categoryVar(task.category)})`;
-  return (
-    <button onClick={onToggle} className="wt-press" style={{
-      display: "inline-flex", alignItems: "center", gap: 7, borderRadius: "var(--r-tag)",
-      padding: "9px 14px 9px 10px", border: "none", cursor: "pointer",
-      background: done ? color : "var(--bg-card)",
-      boxShadow: done ? "none" : "var(--shadow-card)",
-    }}>
-      <span style={{
-        width: 20, height: 20, borderRadius: 999, flexShrink: 0,
-        background: done ? "var(--bg-card)" : color, opacity: done ? 0.9 : 0.35,
-      }} />
-      <span style={{ fontSize: 13.5, fontWeight: 500, color: done ? "var(--text-on-ink)" : "var(--text-primary)", whiteSpace: "nowrap" }}>
-        {task.name}
-      </span>
-      <span style={{ fontSize: 11.5, color: done ? "var(--text-on-ink)" : "var(--text-muted)", opacity: done ? 0.75 : 1 }}>
-        {task.durationMinutes}m
-      </span>
-    </button>
-  );
-}
-
 /* ── Habit row ───────────────────────────────────────────────────────────── */
 
 function HabitRow({ habit, streakDays, week, dragging, dropTarget, onToggle, onDelete, onGripPointerDown }: {
@@ -186,7 +157,6 @@ export function HabitsTab() {
   }
 
   const habits = restTasks.filter((t) => !t.isPreset);
-  const quickRest = restTasks.filter((t) => t.isPreset);
   const { containerRef: habitListRef, dragIndex: habitDragIndex, overIndex: habitOverIndex, startDrag: startHabitDrag } = useDragReorder(habits, reorderRestTasks);
 
   // Seed three starter habits on first visit
@@ -277,19 +247,6 @@ export function HabitsTab() {
               <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", color: "var(--text-secondary)", marginTop: 6 }}>{l}</div>
             </div>
           ))}
-        </div>
-
-        {/* Quick rest — no-commitment, one-tap presets */}
-        <div style={{ paddingTop: 26 }}>
-          <SectionLabel style={{ margin: "0 0 4px 2px", fontSize: 12 }}>Quick rest</SectionLabel>
-          <p style={{ margin: "0 0 12px 2px", fontSize: 13, fontWeight: 300, color: "var(--text-muted)" }}>
-            Rest counts. Same streak.
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {quickRest.map((task) => (
-              <QuickRestChip key={task.id} task={task} onToggle={() => toggleRestTask(task.id)} />
-            ))}
-          </div>
         </div>
 
         {/* Today list */}

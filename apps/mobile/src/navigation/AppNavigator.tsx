@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -10,6 +10,7 @@ import { YouScreen } from '../screens/YouScreen';
 import { FONTS } from '../theme/tokens';
 import { useTokens } from '../components/kit';
 import { Onboarding } from '../components/Onboarding';
+import { StreakSheet } from '../components/StreakSheet';
 
 type TabParamList = {
   Tasks: undefined;
@@ -58,6 +59,7 @@ function Header({ onStreak, onAvatar }: { onStreak: () => void; onAvatar: () => 
 export function AppNavigator() {
   const t = useTokens();
   const { hasSeenOnboarding, markOnboardingSeen } = useApp();
+  const [streakOpen, setStreakOpen] = useState(false);
 
   return (
     <>
@@ -68,7 +70,7 @@ export function AppNavigator() {
           return {
             header: ({ navigation }) => (
               <Header
-                onStreak={() => navigation.navigate('Habits')}
+                onStreak={() => setStreakOpen(true)}
                 onAvatar={() => navigation.navigate('You')}
               />
             ),
@@ -94,6 +96,7 @@ export function AppNavigator() {
         <Tab.Screen name="You" component={YouScreen} />
       </Tab.Navigator>
 
+      {streakOpen && <StreakSheet onClose={() => setStreakOpen(false)} />}
       {!hasSeenOnboarding && <Onboarding onDone={markOnboardingSeen} />}
     </>
   );

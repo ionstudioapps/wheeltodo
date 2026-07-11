@@ -959,12 +959,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const hasTask = completedTasks.some((t) => { const d = new Date(t.completedAt); return d >= today && d < tomorrow; });
-    const hasRest = completedRestDays.some((d) => d >= today && d < tomorrow);
+    // Any logged rest counts as showing up — a single quick rest preserves the
+    // streak (partialRestDays covers rest below the daily rest goal).
+    const hasRest = completedRestDays.some((d) => d >= today && d < tomorrow)
+      || partialRestDays.some((p) => p.date >= today && p.date < tomorrow);
     return hasTask || hasRest;
-  }, [completedTasks, completedRestDays]);
+  }, [completedTasks, completedRestDays, partialRestDays]);
 
   const streak = useMemo(() => {
-    if (completedTasks.length === 0 && completedRestDays.length === 0) return 0;
+    if (completedTasks.length === 0 && completedRestDays.length === 0 && partialRestDays.length === 0) return 0;
     let count = 0;
     const base = new Date();
     base.setHours(0, 0, 0, 0);
@@ -974,11 +977,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const next = new Date(day);
       next.setDate(next.getDate() + 1);
       const hasTask = completedTasks.some((t) => { const d = new Date(t.completedAt); return d >= day && d < next; });
-      const hasRest = completedRestDays.some((d) => d >= day && d < next);
+      const hasRest = completedRestDays.some((d) => d >= day && d < next)
+        || partialRestDays.some((p) => p.date >= day && p.date < next);
       if (hasTask || hasRest) { count++; } else { break; }
     }
     return count;
-  }, [completedTasks, completedRestDays]);
+  }, [completedTasks, completedRestDays, partialRestDays]);
 
   const bestStreak = useMemo(() => {
     const dates = new Set<number>();
@@ -989,6 +993,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     completedRestDays.forEach((d) => {
       const day = new Date(d);
+      day.setHours(0, 0, 0, 0);
+      dates.add(day.getTime());
+    });
+    partialRestDays.forEach((p) => {
+      const day = new Date(p.date);
       day.setHours(0, 0, 0, 0);
       dates.add(day.getTime());
     });
@@ -1006,7 +1015,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
     return best;
-  }, [completedTasks, completedRestDays]);
+  }, [completedTasks, completedRestDays, partialRestDays]);
 
   const restStreak = useMemo(() => {
     if (completedRestDays.length === 0) return 0;
@@ -1028,6 +1037,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const dates = new Set<number>();
     completedRestDays.forEach((d) => {
       const day = new Date(d);
+      day.setHours(0, 0, 0, 0);
+      dates.add(day.getTime());
+    });
+    partialRestDays.forEach((p) => {
+      const day = new Date(p.date);
       day.setHours(0, 0, 0, 0);
       dates.add(day.getTime());
     });

@@ -81,33 +81,6 @@ function Heatmap({ countsByDay }: { countsByDay: Map<string, number> }) {
   );
 }
 
-/* ── Quick rest chip ──────────────────────────────────────────────────────
-   The ten preset rest activities (Get a coffee, Go for a walk, ...) — a
-   no-commitment, one-tap way to log rest without adding a tracked habit.
-   Still counts toward restMinutesToday / the day's streak. ────────────── */
-
-function QuickRestChip({ task, onToggle }: { task: RestTask; onToggle: () => void }) {
-  const t = useTokens();
-  const done = task.completedToday;
-  const color = categoryColor(t, task.category);
-  return (
-    <Pressable onPress={onToggle} style={{
-      flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 999,
-      paddingVertical: 9, paddingLeft: 10, paddingRight: 14,
-      backgroundColor: done ? color : t.colors.bg.card,
-      ...(done ? {} : cardShadow(t.dark)),
-    }}>
-      <View style={{ width: 20, height: 20, borderRadius: 999, backgroundColor: done ? t.colors.bg.card : color, opacity: done ? 0.9 : 0.35 }} />
-      <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 13.5, color: done ? t.colors.text.onInk : t.colors.text.primary }}>
-        {task.name}
-      </Text>
-      <Text style={{ fontFamily: FONTS.sans, fontSize: 11.5, color: done ? t.colors.text.onInk : t.colors.text.muted, opacity: done ? 0.75 : 1 }}>
-        {task.durationMinutes}m
-      </Text>
-    </Pressable>
-  );
-}
-
 /* ── Habit row ───────────────────────────────────────────────────────────── */
 
 function HabitRow({ habit, streakDays, week, gripHandlers, onToggle, onDelete }: {
@@ -203,7 +176,6 @@ export function HabitsScreen() {
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
 
   const habits = restTasks.filter((h) => !h.isPreset);
-  const quickRest = restTasks.filter((h) => h.isPreset);
   const { setRowRef, makePanResponder, dragIndex, dragY, shiftFor } = useDragReorder(habits, reorderRestTasks);
 
   function handleDeleteHabit(habit: RestTask) {
@@ -302,19 +274,6 @@ export function HabitsScreen() {
               <Text style={s.statLabel}>{l}</Text>
             </View>
           ))}
-        </View>
-
-        {/* Quick rest — no-commitment, one-tap presets */}
-        <View style={{ paddingTop: 26 }}>
-          <SectionLabel style={{ fontSize: 12, marginBottom: 4, marginLeft: 2 }}>Quick rest</SectionLabel>
-          <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, color: t.colors.text.muted, marginBottom: 12, marginLeft: 2 }}>
-            Rest counts. Same streak.
-          </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {quickRest.map((task) => (
-              <QuickRestChip key={task.id} task={task} onToggle={() => toggleRestTask(task.id)} />
-            ))}
-          </View>
         </View>
 
         {/* Today list */}
