@@ -1,11 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { type GestureResponderHandlers, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Check, GripVertical, Plus, Trash2 } from 'lucide-react-native';
 import { useDragReorder } from '../hooks/useDragReorder';
 import { useApp, FREE_LIMITS, type RestCategory, type RestTask } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
-import { ConfettiField, Headline, Ring, SectionLabel, Sheet, SpinPill, cardShadow, useTokens } from '../components/kit';
+import { ConfettiBurst, Headline, Ring, SectionLabel, Sheet, SpinPill, cardShadow, useTokens } from '../components/kit';
 import { BloomChip, BloomNudge, UpgradeScreen } from '../components/Upgrade';
 import { Toast, useToast } from '../components/Toast';
 import { SkeletonRows } from '../components/Skeleton';
@@ -182,6 +182,20 @@ export function HabitsScreen() {
     setRefreshing(false);
   }
 
+  // One-shot celebration when the final habit of the day is checked off.
+  const [celebrate, setCelebrate] = useState(false);
+  const celebrateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleToggleHabit(h: RestTask) {
+    const completesAll = !h.completedToday && habits.every((x) => x.id === h.id || x.completedToday);
+    toggleRestTask(h.id);
+    if (completesAll) {
+      setCelebrate(true);
+      if (celebrateTimer.current) clearTimeout(celebrateTimer.current);
+      celebrateTimer.current = setTimeout(() => setCelebrate(false), 1800);
+    }
+  }
+
   const [addOpen, setAddOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [name, setName] = useState('');
@@ -247,7 +261,7 @@ export function HabitsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg.screen }}>
-      {allDone && <ConfettiField count={24} />}
+      <ConfettiBurst active={celebrate} />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 40 }}
         refreshControl={user ? (
@@ -264,7 +278,7 @@ export function HabitsScreen() {
           )}
         </View>
 
-        {allDone ? (
+        {allDone && (
           <View style={{ alignItems: 'center', paddingVertical: 30 }}>
             <Ring progress={1} size={150} stroke={13} color={t.colors.action.success}>
               <View style={{ alignItems: 'center' }}>
@@ -273,11 +287,12 @@ export function HabitsScreen() {
               </View>
             </Ring>
           </View>
-        ) : (
-          <View style={{ paddingTop: 24 }}>
-            <Heatmap countsByDay={countsByDay} />
-          </View>
         )}
+
+        {/* Heatmap — always visible, including after finishing the day */}
+        <View style={{ paddingTop: allDone ? 0 : 24 }}>
+          <Heatmap countsByDay={countsByDay} />
+        </View>
 
         {/* Stat cards */}
         <View style={{ flexDirection: 'row', gap: 10, paddingTop: 24 }}>
@@ -322,7 +337,7 @@ export function HabitsScreen() {
                   streakDays={habitStreak(h.id)}
                   week={weekFor(h.id)}
                   gripHandlers={makePanResponder(i).panHandlers}
-                  onToggle={() => toggleRestTask(h.id)}
+                  onToggle={() => handleToggleHabit(h)}
                   onDelete={() => handleDeleteHabit(h)}
                 />
               </View>

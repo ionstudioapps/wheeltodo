@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp, FREE_LIMITS, type RestTask, type RestCategory } from "@/context/AppContext";
 import { useSubscription } from "@/hooks/useSubscription";
-import { WIcon, Headline, SpinPill, Sheet, SectionLabel, ConfettiField } from "@/components/ui/kit";
+import { WIcon, Headline, SpinPill, Sheet, SectionLabel, ConfettiBurst } from "@/components/ui/kit";
 import { UpgradeScreen, BloomNudge } from "@/components/Upgrade";
 import { Toast, useToast } from "@/components/ui/Toast";
 import { useDragReorder } from "@/hooks/useDragReorder";
@@ -182,6 +182,19 @@ export function HabitsTab() {
   const [name, setName] = useState("");
   const [cat, setCat] = useState<RestCategory>("Physical");
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
+  // One-shot celebration when the final habit of the day is checked off.
+  const [celebrate, setCelebrate] = useState(false);
+  const celebrateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleToggleHabit(h: RestTask) {
+    const completesAll = !h.completedToday && habits.every((x) => x.id === h.id || x.completedToday);
+    toggleRestTask(h.id);
+    if (completesAll) {
+      setCelebrate(true);
+      if (celebrateTimer.current) clearTimeout(celebrateTimer.current);
+      celebrateTimer.current = setTimeout(() => setCelebrate(false), 1800);
+    }
+  }
 
   function handleDeleteHabit(habit: RestTask) {
     removeRestTask(habit.id);
@@ -242,7 +255,7 @@ export function HabitsTab() {
 
   return (
     <div className="wt-page wt-page--narrow" style={{ position: "relative" }}>
-      {allDone && <ConfettiField count={24} />}
+      <ConfettiBurst active={celebrate} />
 
       <div style={{ position: "relative", zIndex: 2, paddingTop: 10 }}>
         {allDone ? (
@@ -265,12 +278,10 @@ export function HabitsTab() {
           </div>
         )}
 
-        {/* Heatmap */}
-        {!allDone && (
-          <div style={{ paddingTop: 24 }}>
-            <Heatmap countsByDay={countsByDay} />
-          </div>
-        )}
+        {/* Heatmap — always visible, including after finishing the day */}
+        <div style={{ paddingTop: 24 }}>
+          <Heatmap countsByDay={countsByDay} />
+        </div>
 
         {/* Stat cards */}
         <div style={{ paddingTop: 24, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
@@ -311,7 +322,7 @@ export function HabitsTab() {
                 week={weekFor(h.id)}
                 dragging={habitDragIndex === i}
                 dropTarget={habitDragIndex !== null && habitOverIndex === i && habitOverIndex !== habitDragIndex}
-                onToggle={() => toggleRestTask(h.id)}
+                onToggle={() => handleToggleHabit(h)}
                 onDelete={() => handleDeleteHabit(h)}
                 onGripPointerDown={() => startHabitDrag(i)}
               />
