@@ -383,7 +383,7 @@ export function TasksScreen() {
   const [spinning, setSpinning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
-  const { setRowRef, makePanResponder, dragIndex, overIndex } = useDragReorder(tasks, reorderTasks);
+  const { setRowRef, makePanResponder, dragIndex, dragY, shiftFor } = useDragReorder(tasks, reorderTasks);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -677,14 +677,17 @@ export function TasksScreen() {
             </View>
             <View style={{ gap: 9 }}>
               {tasks.map((task, i) => (
-                <View
+                <Animated.View
                   key={task.id}
-                  ref={(r) => setRowRef(i, r)}
+                  ref={(r) => setRowRef(i, r as unknown as View)}
                   style={{
-                    opacity: dragIndex === i ? 0.5 : 1,
-                    borderTopWidth: 2,
-                    borderTopColor: dragIndex !== null && overIndex === i && overIndex !== dragIndex
-                      ? t.colors.accent.main : 'transparent',
+                    transform: [{ translateY: dragIndex === i ? dragY : shiftFor(i) }],
+                    zIndex: dragIndex === i ? 10 : 0,
+                    ...(dragIndex === i ? {
+                      opacity: 0.96,
+                      shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 16,
+                      shadowOffset: { width: 0, height: 8 }, elevation: 8,
+                    } : {}),
                   }}
                 >
                   <TaskRow
@@ -696,7 +699,7 @@ export function TasksScreen() {
                     onDelete={() => handleDeleteTask(task)}
                     onEdit={() => setEditingTask(task)}
                   />
-                </View>
+                </Animated.View>
               ))}
             </View>
 

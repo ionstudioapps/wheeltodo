@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { type GestureResponderHandlers, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Animated, type GestureResponderHandlers, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Check, GripVertical, Plus, Trash2 } from 'lucide-react-native';
 import { useDragReorder } from '../hooks/useDragReorder';
 import { useApp, FREE_LIMITS, type RestCategory, type RestTask } from '../context/AppContext';
@@ -204,7 +204,7 @@ export function HabitsScreen() {
 
   const habits = restTasks.filter((h) => !h.isPreset);
   const quickRest = restTasks.filter((h) => h.isPreset);
-  const { setRowRef, makePanResponder, dragIndex, overIndex } = useDragReorder(habits, reorderRestTasks);
+  const { setRowRef, makePanResponder, dragIndex, dragY, shiftFor } = useDragReorder(habits, reorderRestTasks);
 
   function handleDeleteHabit(habit: RestTask) {
     removeRestTask(habit.id);
@@ -322,14 +322,17 @@ export function HabitsScreen() {
           <SectionLabel style={{ fontSize: 12, marginBottom: 12, marginLeft: 2 }}>Today</SectionLabel>
           <View style={{ gap: 10 }}>
             {habits.map((h, i) => (
-              <View
+              <Animated.View
                 key={h.id}
-                ref={(r) => setRowRef(i, r)}
+                ref={(r) => setRowRef(i, r as unknown as View)}
                 style={{
-                  opacity: dragIndex === i ? 0.5 : 1,
-                  borderTopWidth: 2,
-                  borderTopColor: dragIndex !== null && overIndex === i && overIndex !== dragIndex
-                    ? t.colors.accent.main : 'transparent',
+                  transform: [{ translateY: dragIndex === i ? dragY : shiftFor(i) }],
+                  zIndex: dragIndex === i ? 10 : 0,
+                  ...(dragIndex === i ? {
+                    opacity: 0.96,
+                    shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 16,
+                    shadowOffset: { width: 0, height: 8 }, elevation: 8,
+                  } : {}),
                 }}
               >
                 <HabitRow
@@ -340,7 +343,7 @@ export function HabitsScreen() {
                   onToggle={() => handleToggleHabit(h)}
                   onDelete={() => handleDeleteHabit(h)}
                 />
-              </View>
+              </Animated.View>
             ))}
 
             {cloudLoading && habits.length === 0 && <SkeletonRows count={2} height={88} />}

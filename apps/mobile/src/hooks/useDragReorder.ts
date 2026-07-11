@@ -1,25 +1,42 @@
 import { useRef, useState } from 'react';
-import { PanResponder, type View } from 'react-native';
+import { Animated, PanResponder, type View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 
 /**
- * Long-press-free drag reorder for a vertical list of rows, driven by
- * PanResponder on a per-row grip handle. Row screen positions are measured
- * fresh at drag-start (not tracked continuously), so this doesn't support
- * auto-scroll while dragging near the edges of a long list — acceptable for
- * the short task/habit lists this is used with. The dragged row is reported
- * via `dragIndex` (consumer dims/lifts it) and the row currently under the
- * touch via `overIndex` (consumer draws an insertion indicator). The actual
- * reorder is committed once, on release.
+ * Drag reorder for a vertical list of rows, driven by PanResponder on a
+ * per-row grip handle. The dragged row follows the finger (`dragY`) while
+ * sibling rows animate out of the way (`shiftFor`), and the reorder is
+ * committed once, on release.
+ *
+ * Row screen positions are measured fresh at drag-start (not tracked
+ * continuously), so this doesn't support auto-scroll while dragging near the
+ * edges of a long list — acceptable for the short task/habit lists this is
+ * used with.
  */
 export function useDragReorder<T>(items: T[], onReorder: (next: T[]) => void) {
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const rowRefs = useRef<Map<number, View | null>>(new Map());
   const rowMidpoints = useRef<number[]>([]);
+  const rowSlots = useRef<number[]>([]); // distance each row travels when it swaps past its neighbour
   const dragIndexRef = useRef<number | null>(null);
   const overIndexRef = useRef<number | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+
+  // Finger-following offset for the dragged row (JS-set, native-rendered).
+  const dragY = useRef(new Animated.Value(0)).current;
+  // Per-row slide offsets for the rows making room.
+  const shifts = useRef<Map<number, Animated.Value>>(new Map());
+
+  function shiftFor(index: number): Animated.Value {
+    let v = shifts.current.get(index);
+    if (!v) {
+      v = new Animated.Value(0);
+      shifts.current.set(index, v);
+    }
+    return v;
+  }
 
   function setRowRef(index: number, ref: View | null) {
     rowRefs.current.set(index, ref);
@@ -34,12 +51,44 @@ export function useDragReorder<T>(items: T[], onReorder: (next: T[]) => void) {
     return Promise.all(
       entries.map(
         ([, ref]) =>
-          new Promise<number>((resolve) => {
-            if (!ref) { resolve(0); return; }
-            ref.measure((_x, _y, _w, height, _pageX, pageY) => resolve(pageY + height / 2));
+          new Promise<{ mid: number; top: number; height: number }>((resolve) => {
+            if (!ref) { resolve({ mid: 0, top: 0, height: 0 }); return; }
+            ref.measure((_x, _y, _w, height, _pageX, pageY) =>
+              resolve({ mid: pageY + height / 2, top: pageY, height }));
           })
       )
-    ).then((mids) => { rowMidpoints.current = mids; });
+    ).then((rows) => {
+      rowMidpoints.current = rows.map((r) => r.mid);
+      // Slot size for row i = gap between consecutive row tops (covers the
+      // row height plus the list gap). Last row reuses its predecessor's.
+      rowSlots.current = rows.map((r, i) =>
+        i < rows.length - 1 ? rows[i + 1].top - r.top : (i > 0 ? r.top - rows[i - 1].top : r.height));
+    });
+  }
+
+  /** How far row `i` must slide while `from` is hovering over `to`. */
+  function targetShift(i: number, from: number, to: number): number {
+    const slot = rowSlots.current[from] ?? 0;
+    if (from < to && i > from && i <= to) return -slot;
+    if (to < from && i >= to && i < from) return slot;
+    return 0;
+  }
+
+  function animateShifts(from: number, to: number) {
+    const n = itemsRef.current.length;
+    for (let i = 0; i < n; i++) {
+      if (i === from) continue;
+      Animated.timing(shiftFor(i), {
+        toValue: targetShift(i, from, to),
+        duration: 160,
+        useNativeDriver: true,
+      }).start();
+    }
+  }
+
+  function resetOffsets() {
+    dragY.setValue(0);
+    shifts.current.forEach((v) => v.setValue(0));
   }
 
   function endDrag(commit: boolean) {
@@ -50,11 +99,14 @@ export function useDragReorder<T>(items: T[], onReorder: (next: T[]) => void) {
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
       onReorder(next);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
     dragIndexRef.current = null;
     overIndexRef.current = null;
     setDragIndex(null);
     setOverIndex(null);
+    // The list re-renders in its new order, so all offsets go back to zero.
+    resetOffsets();
   }
 
   function makePanResponder(index: number) {
@@ -69,9 +121,12 @@ export function useDragReorder<T>(items: T[], onReorder: (next: T[]) => void) {
         overIndexRef.current = index;
         setDragIndex(index);
         setOverIndex(index);
+        resetOffsets();
         void measureAll();
+        Haptics.selectionAsync().catch(() => {});
       },
       onPanResponderMove: (_evt, gesture) => {
+        dragY.setValue(gesture.dy);
         const mids = rowMidpoints.current;
         if (!mids.length) return;
         let next = dragIndexRef.current ?? 0;
@@ -82,6 +137,8 @@ export function useDragReorder<T>(items: T[], onReorder: (next: T[]) => void) {
         if (next !== overIndexRef.current) {
           overIndexRef.current = next;
           setOverIndex(next);
+          const from = dragIndexRef.current;
+          if (from !== null) animateShifts(from, next);
         }
       },
       onPanResponderRelease: () => endDrag(true),
@@ -89,5 +146,5 @@ export function useDragReorder<T>(items: T[], onReorder: (next: T[]) => void) {
     });
   }
 
-  return { setRowRef, makePanResponder, dragIndex, overIndex };
+  return { setRowRef, makePanResponder, dragIndex, overIndex, dragY, shiftFor };
 }
