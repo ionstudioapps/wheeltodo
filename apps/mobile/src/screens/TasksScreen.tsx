@@ -768,7 +768,7 @@ export function TasksScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 14 }}>
             <TaskAvatar task={picked} size={46} />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 18, color: t.colors.text.primary }}>{picked.name}</Text>
+              <Text numberOfLines={2} style={{ fontFamily: FONTS.sansSemi, fontSize: 18, color: t.colors.text.primary }}>{picked.name}</Text>
               <Text style={{
                 fontFamily: pickedTut ? FONTS.sansMedium : FONTS.sansLight, fontSize: 13, marginTop: 1,
                 color: pickedTut ? t.colors.accent.main : t.colors.text.secondary,

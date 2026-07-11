@@ -135,7 +135,7 @@ function HabitRow({ habit, streakDays, week, gripHandlers, onToggle, onDelete }:
         </Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 16, color: done ? t.colors.text.muted : t.colors.text.primary }}>
+        <Text numberOfLines={1} style={{ fontFamily: FONTS.sansMedium, fontSize: 16, color: done ? t.colors.text.muted : t.colors.text.primary }}>
           {habit.name}
         </Text>
         <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, marginTop: 1, color: t.colors.text.secondary }}>
@@ -343,7 +343,9 @@ export function HabitsScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 16, color: t.colors.text.muted }}>Add a habit</Text>
                     <Text style={{ fontFamily: FONTS.sans, fontSize: 12, color: t.colors.text.muted, marginTop: 2 }}>
-                      {FREE_LIMITS.habits} of {FREE_LIMITS.habits} habit slots used
+                      {habits.length > FREE_LIMITS.habits
+                        ? `Seed includes ${FREE_LIMITS.habits} — your ${habits.length} still count`
+                        : `${FREE_LIMITS.habits} of ${FREE_LIMITS.habits} habit slots used`}
                     </Text>
                   </View>
                   <BloomChip />

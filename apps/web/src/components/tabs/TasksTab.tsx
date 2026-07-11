@@ -942,7 +942,7 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
               <TaskAvatar task={picked} size={46} />
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 18, fontWeight: 600, color: "var(--text-primary)" }}>{picked.name}</div>
+              <div style={{ fontSize: 18, fontWeight: 600, color: "var(--text-primary)", overflowWrap: "anywhere" }}>{picked.name}</div>
               <div style={{ fontSize: 13, fontWeight: pickedTut ? 500 : 300, color: pickedTut ? "var(--accent)" : "var(--text-secondary)", marginTop: 1 }}>
                 {pickedTut ? `${pickedTut.feature} · step ${pickedTut.step} of 5` : `${picked.minutes} min focus block`}
               </div>

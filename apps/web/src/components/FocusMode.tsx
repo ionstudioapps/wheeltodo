@@ -224,7 +224,7 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
                 <WIcon name="arrowL" size={20} />
               </button>
               <p style={{ margin: "8px 0", fontSize: 12, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Focus on.</p>
-              <p style={{ margin: "0 0 14px", fontSize: 22, fontWeight: 600, lineHeight: 1.25, color: "var(--text-primary)" }}>{pomodoroSession?.taskName}</p>
+              <p style={{ margin: "0 0 14px", fontSize: 22, fontWeight: 600, lineHeight: 1.25, color: "var(--text-primary)", overflowWrap: "anywhere" }}>{pomodoroSession?.taskName}</p>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--bg-card)", border: "1px solid var(--border-hairline)", borderRadius: "var(--r-pill)", padding: "5px 12px" }}>
                 <WIcon name="clock" size={13} color="var(--text-secondary)" />
                 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-secondary)" }}>{durMin} min</span>

@@ -142,7 +142,7 @@ function HabitRow({ habit, streakDays, week, dragging, dropTarget, onToggle, onD
         {initial}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 16, fontWeight: 500, color: done ? "var(--text-muted)" : "var(--text-primary)" }}>{habit.name}</div>
+        <div style={{ fontSize: 16, fontWeight: 500, color: done ? "var(--text-muted)" : "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{habit.name}</div>
         <div style={{ fontSize: 13, fontWeight: 300, color: "var(--text-secondary)", marginTop: 1 }}>
           {`${habit.category === "My Tasks" ? "Custom" : habit.category} · ${streakDays > 0 ? `${streakDays} day streak` : "No streak yet"}`}
         </div>
@@ -339,7 +339,11 @@ export function HabitsTab() {
                   </span>
                   <span style={{ flex: 1 }}>
                     <span style={{ display: "block", fontSize: 16, fontWeight: 500, color: "var(--text-muted)" }}>Add a habit</span>
-                    <span style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{FREE_LIMITS.habits} of {FREE_LIMITS.habits} habit slots used</span>
+                    <span style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                      {habits.length > FREE_LIMITS.habits
+                        ? `Seed includes ${FREE_LIMITS.habits} — your ${habits.length} still count`
+                        : `${FREE_LIMITS.habits} of ${FREE_LIMITS.habits} habit slots used`}
+                    </span>
                   </span>
                   <span style={{ background: "var(--c-lavender)", borderRadius: "var(--r-tag)", padding: "4px 10px", flexShrink: 0 }}>
                     <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-on-ink)", letterSpacing: "0.06em" }}>BLOOM</span>

@@ -115,7 +115,7 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
                 <ArrowLeft size={22} color={t.colors.text.secondary} strokeWidth={2} />
               </Pressable>
               <Text style={s.eyebrow}>FOCUS ON.</Text>
-              <Text style={s.taskTitle}>{pomodoroSession?.taskName}</Text>
+              <Text numberOfLines={2} style={s.taskTitle}>{pomodoroSession?.taskName}</Text>
               <View style={s.durBadge}>
                 <Clock size={13} color={t.colors.text.secondary} strokeWidth={2} />
                 <Text style={s.durText}>{durMin} min</Text>
