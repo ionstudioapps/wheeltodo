@@ -14,8 +14,8 @@ const BLOOM_FEATURES = [
   'Unlimited AI task breakdowns',
   'Unlimited AI voice-to-task',
   'Brain Starter every day',
-  'AI Pattern Learning',
-  'Cloud Sync & Backup',
+  'AI pattern learning',
+  'Cloud sync & backup',
   'Multi-device: phone, tablet, desktop',
   'All future AI features',
 ];

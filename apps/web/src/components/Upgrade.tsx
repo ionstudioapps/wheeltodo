@@ -10,8 +10,8 @@ const BLOOM_FEATURES = [
   "Unlimited AI task breakdowns",
   "Unlimited AI voice-to-task",
   "Brain Starter every day",
-  "AI Pattern Learning",
-  "Cloud Sync & Backup",
+  "AI pattern learning",
+  "Cloud sync & backup",
   "Multi-device: phone, tablet, desktop",
   "All future AI features",
 ];
@@ -23,8 +23,8 @@ const COMPARE_ROWS = [
   { label: "AI task breakdown", seed: "1/day", bloom: "Unlimited" },
   { label: "AI voice-to-task", seed: "1/month", bloom: "Unlimited" },
   { label: "Brain Starter game", seed: "1/week", bloom: "1/day" },
-  { label: "AI Pattern Learning", seed: "—", bloom: "✓" },
-  { label: "Cloud Sync & Backup", seed: "—", bloom: "✓" },
+  { label: "AI pattern learning", seed: "—", bloom: "✓" },
+  { label: "Cloud sync & backup", seed: "—", bloom: "✓" },
   { label: "Multi-device", seed: "—", bloom: "✓" },
 ];
 
