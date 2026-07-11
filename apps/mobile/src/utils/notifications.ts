@@ -1,21 +1,37 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 export type PushRegistrationResult =
   | { ok: true; expoPushToken: string }
-  | { ok: false; reason: 'not-a-device' | 'permission-denied' | 'error'; error?: unknown };
+  | { ok: false; reason: 'not-a-device' | 'permission-denied' | 'expo-go' | 'error'; error?: unknown };
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-});
+// expo-notifications' remote-push machinery was removed from Expo Go in SDK 53
+// and the package throws during module evaluation on Android there — so it must
+// be require()d lazily, never statically imported, and every entry point
+// no-ops inside Expo Go. Development/production builds get full behaviour.
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
+
+type NotificationsModule = typeof import('expo-notifications');
+let notificationsModule: NotificationsModule | null = null;
+
+function getNotifications(): NotificationsModule | null {
+  if (isExpoGo) return null;
+  if (!notificationsModule) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    notificationsModule = require('expo-notifications') as NotificationsModule;
+    notificationsModule.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+      }),
+    });
+  }
+  return notificationsModule;
+}
 
 function getEasProjectId(): string | undefined {
   const anyConstants = Constants as any;
@@ -28,6 +44,8 @@ function getEasProjectId(): string | undefined {
 
 export async function registerForPushNotificationsAsync(): Promise<PushRegistrationResult> {
   try {
+    const Notifications = getNotifications();
+    if (!Notifications) return { ok: false, reason: 'expo-go' };
     if (!Device.isDevice) return { ok: false, reason: 'not-a-device' };
 
     if (Platform.OS === 'android') {
@@ -60,7 +78,7 @@ export async function registerForPushNotificationsAsync(): Promise<PushRegistrat
 const POMODORO_CHANNEL_ID = 'pomodoro-timer';
 const POMODORO_NOTIF_ID = 'pomodoro-live';
 
-async function ensurePomodoroChannel() {
+async function ensurePomodoroChannel(Notifications: NotificationsModule) {
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(POMODORO_CHANNEL_ID, {
       name: 'Pomodoro Timer',
@@ -72,7 +90,7 @@ async function ensurePomodoroChannel() {
   }
 }
 
-async function ensureNotificationPermission(): Promise<boolean> {
+async function ensureNotificationPermission(Notifications: NotificationsModule): Promise<boolean> {
   if (!Device.isDevice) return false;
   const perms: any = await Notifications.getPermissionsAsync();
   if (perms.status === 'granted') return true;
@@ -88,9 +106,11 @@ function formatRemaining(seconds: number): string {
 }
 
 export async function showPomodoroNotification(taskName: string, remainingSeconds: number): Promise<void> {
-  const granted = await ensureNotificationPermission();
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+  const granted = await ensureNotificationPermission(Notifications);
   if (!granted) return;
-  await ensurePomodoroChannel();
+  await ensurePomodoroChannel(Notifications);
 
   await Notifications.dismissNotificationAsync(POMODORO_NOTIF_ID).catch(() => {});
   await Notifications.scheduleNotificationAsync({
@@ -107,5 +127,7 @@ export async function showPomodoroNotification(taskName: string, remainingSecond
 }
 
 export async function dismissPomodoroNotification(): Promise<void> {
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   await Notifications.dismissNotificationAsync(POMODORO_NOTIF_ID).catch(() => {});
 }
