@@ -137,6 +137,7 @@ interface AppContextType {
   completedTasks: CompletedTask[];
   completeTask: (taskId: string, minutesActual: number) => void;
   uncompleteTask: (completedTaskId: string) => void;
+  reorderTasks: (next: Task[]) => void;
 
   pomodoroSession: PomodoroSession | null;
   taskProgress: Record<string, number>;
@@ -185,6 +186,7 @@ interface AppContextType {
   partialRestDays: { date: Date; pct: number }[];
   toggleRestTask: (id: string) => void;
   addRestTask: (name: string, durationMinutes?: number, color?: string, icon?: string, category?: RestCategory) => void;
+  reorderRestTasks: (next: RestTask[]) => void;
   removeRestTask: (id: string) => void;
 
   activeRestTimer: ActiveRestTimer | null;
@@ -504,6 +506,12 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     }
   };
 
+  const reorderTasks = (next: Task[]) => {
+    setTasks(next);
+    const { userId: uid } = syncRef.current;
+    if (uid) next.forEach((t, i) => dbUpsertTask(uid, t, i));
+  };
+
   // ─── Pomodoro ────────────────────────────────────────────────────────────────
 
   const startPomodoro = (task: Task) => {
@@ -662,6 +670,13 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     setRestTasks((prev) => [...prev, newTask]);
     const { userId: uid } = syncRef.current;
     if (uid) dbUpsertRestTask(uid, newTask);
+  };
+
+  // Reorders just the tracked (non-preset) habits — Quick Rest presets are a
+  // fixed set and always render in their own section, so their relative
+  // position in this combined array doesn't affect anything on screen.
+  const reorderRestTasks = (next: RestTask[]) => {
+    setRestTasks((prev) => [...prev.filter((t) => t.isPreset), ...next]);
   };
 
   const removeRestTask = (id: string) => {
@@ -870,7 +885,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
 
   const value: AppContextType = {
     tasks, seedTasks, addTask, updateTask, deleteTask,
-    completedTasks, completeTask, uncompleteTask,
+    completedTasks, completeTask, uncompleteTask, reorderTasks,
     pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, cancelPomodoro, tickPomodoro,
     resumedSession, consumeResumedSession,
     dailyGoal, setDailyGoal,
@@ -879,7 +894,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     streak, bestStreak, hasActivityToday, spinCount, incrementSpinCount, achievementValues,
     spinsToday, aiUsesToday, registerAiUse, habitHistory, habitStreak, notifPrefs, setNotifPref,
     voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
-    restTasks, completedRestDays, partialRestDays, toggleRestTask, addRestTask, removeRestTask,
+    restTasks, completedRestDays, partialRestDays, toggleRestTask, addRestTask, removeRestTask, reorderRestTasks,
     activeRestTimer, startRestTimer, cancelRestTimer, tickRestTimer,
     todayMood, setTodayMood,
     restGoalTier, setRestGoalTier,

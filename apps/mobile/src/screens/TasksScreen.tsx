@@ -1,8 +1,9 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
-  Animated, Easing, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  Animated, Easing, type GestureResponderHandlers, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
-import { ArrowRight, ArrowUpRight, Check, Mic, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react-native';
+import { ArrowRight, ArrowUpRight, Check, GripVertical, Mic, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react-native';
+import { useDragReorder } from '../hooks/useDragReorder';
 import { useApp, COLORS, FREE_LIMITS, type Task } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
 import {
@@ -45,8 +46,8 @@ function TaskAvatar({ task, size = 38 }: { task: Task; size?: number }) {
 
 /* ── Task row ────────────────────────────────────────────────────────────── */
 
-function TaskRow({ task, dim, remainingLabel, onComplete, onDelete, onEdit }: {
-  task: Task; dim?: boolean; remainingLabel?: string;
+function TaskRow({ task, dim, remainingLabel, gripHandlers, onComplete, onDelete, onEdit }: {
+  task: Task; dim?: boolean; remainingLabel?: string; gripHandlers?: GestureResponderHandlers;
   onComplete: () => void; onDelete: () => void; onEdit: () => void;
 }) {
   const t = useTokens();
@@ -59,6 +60,11 @@ function TaskRow({ task, dim, remainingLabel, onComplete, onDelete, onEdit }: {
       borderRadius: 18, paddingHorizontal: 15, paddingVertical: 14,
       ...(dim ? {} : cardShadow(t.dark)),
     }}>
+      {gripHandlers && (
+        <View {...gripHandlers} hitSlop={{ top: 12, bottom: 12, left: 12, right: 6 }} style={{ marginLeft: -4, marginRight: -6 }}>
+          <GripVertical size={16} color={t.colors.text.muted} strokeWidth={1.8} />
+        </View>
+      )}
       <TaskAvatar task={task} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={{ fontFamily: FONTS.sansMedium, fontSize: 16, color: t.colors.text.primary }}>
@@ -346,7 +352,7 @@ function AiSheet({ mode, task, onClose, onAdd, onGenerated }: {
 export function TasksScreen() {
   const t = useTokens();
   const {
-    tasks, addTask, updateTask, deleteTask, completeTask, startPomodoro,
+    tasks, addTask, updateTask, deleteTask, completeTask, reorderTasks, startPomodoro,
     incrementSpinCount, pomodoroSession, taskProgress, completedTasks,
     dailyGoal, streak, spinsToday, aiUsesToday, registerAiUse,
     voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
@@ -370,6 +376,7 @@ export function TasksScreen() {
   const [picked, setPicked] = useState<Task | null>(null);
   const [spinning, setSpinning] = useState(false);
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
+  const { setRowRef, makePanResponder, dragIndex, overIndex } = useDragReorder(tasks, reorderTasks);
 
   const rotation = useRef(new Animated.Value(0)).current;
   const rotationRef = useRef(0);
@@ -591,16 +598,27 @@ export function TasksScreen() {
               </Pressable>
             </View>
             <View style={{ gap: 9 }}>
-              {tasks.map((task) => (
-                <TaskRow
+              {tasks.map((task, i) => (
+                <View
                   key={task.id}
-                  task={task}
-                  dim={picked?.id === task.id}
-                  remainingLabel={taskProgress[task.id] != null ? `${formatMmSs(taskProgress[task.id])} left` : undefined}
-                  onComplete={() => handleDone(task)}
-                  onDelete={() => handleDeleteTask(task)}
-                  onEdit={() => setEditingTask(task)}
-                />
+                  ref={(r) => setRowRef(i, r)}
+                  style={{
+                    opacity: dragIndex === i ? 0.5 : 1,
+                    borderTopWidth: 2,
+                    borderTopColor: dragIndex !== null && overIndex === i && overIndex !== dragIndex
+                      ? t.colors.accent.main : 'transparent',
+                  }}
+                >
+                  <TaskRow
+                    task={task}
+                    dim={picked?.id === task.id}
+                    remainingLabel={taskProgress[task.id] != null ? `${formatMmSs(taskProgress[task.id])} left` : undefined}
+                    gripHandlers={makePanResponder(i).panHandlers}
+                    onComplete={() => handleDone(task)}
+                    onDelete={() => handleDeleteTask(task)}
+                    onEdit={() => setEditingTask(task)}
+                  />
+                </View>
               ))}
             </View>
 

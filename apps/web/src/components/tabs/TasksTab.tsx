@@ -14,6 +14,7 @@ import { WeeklyRecap } from "@/components/WeeklyRecap";
 import { BrainStarter } from "@/components/BrainStarter";
 import { UpgradeScreen, BloomNudge } from "@/components/Upgrade";
 import { Toast, useToast } from "@/components/ui/Toast";
+import { useDragReorder } from "@/hooks/useDragReorder";
 
 /* ── Add / edit task sheet ───────────────────────────────────────────────── */
 
@@ -148,19 +149,30 @@ function TaskAvatar({ task, size = 38 }: { task: Task; size?: number }) {
   );
 }
 
-function TaskRow({ task, dim, displayTime, onComplete, onDelete, onEdit }: {
-  task: Task; dim?: boolean; displayTime?: string;
-  onComplete: () => void; onDelete: () => void; onEdit: () => void;
+function TaskRow({ task, dim, displayTime, dragging, dropTarget, onComplete, onDelete, onEdit, onGripPointerDown }: {
+  task: Task; dim?: boolean; displayTime?: string; dragging?: boolean; dropTarget?: boolean;
+  onComplete: () => void; onDelete: () => void; onEdit: () => void; onGripPointerDown?: (e: React.PointerEvent) => void;
 }) {
   const tut = isTutorialTask(task.id) ? tutorialStepFor(task.id) : undefined;
 
   return (
     <div onClick={onEdit} style={{
-      display: "flex", alignItems: "center", gap: 13, cursor: "pointer",
+      display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
       background: dim ? "var(--bg-sunk)" : "var(--bg-card)",
       borderRadius: "var(--r-row)", padding: "14px 15px",
       boxShadow: dim ? "none" : "var(--shadow-card)",
+      opacity: dragging ? 0.5 : 1,
+      borderTop: dropTarget ? "2px solid var(--accent)" : "2px solid transparent",
     }}>
+      {!tut && (
+        <span
+          onPointerDown={onGripPointerDown}
+          onClick={(e) => e.stopPropagation()}
+          style={{ cursor: onGripPointerDown ? "grab" : "default", touchAction: "none", color: "var(--text-muted)", flexShrink: 0, display: "flex" }}
+        >
+          <WIcon name="grip" size={16} stroke={1.6} />
+        </span>
+      )}
       {tut ? (
         <span style={{ width: 38, height: 38, borderRadius: 999, background: task.color, color: "var(--bg-card)", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700 }}>
           {tut.step}
@@ -495,12 +507,13 @@ interface TasksTabProps {
 
 export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
   const {
-    tasks, addTask, updateTask, deleteTask, completeTask,
+    tasks, addTask, updateTask, deleteTask, completeTask, reorderTasks,
     startPomodoro, incrementSpinCount, pomodoroSession, taskProgress,
     completedTasks, dailyGoal, streak, spinsToday, aiUsesToday, registerAiUse,
     voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
   } = useApp();
   const { isPremium, activate } = useSubscription();
+  const { containerRef: taskListRef, dragIndex: taskDragIndex, overIndex: taskOverIndex, startDrag: startTaskDrag } = useDragReorder(tasks, reorderTasks);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -777,16 +790,19 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
                   <WIcon name="plus" size={16} /> add
                 </button>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                {tasks.map((task) => (
+              <div ref={taskListRef} style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                {tasks.map((task, i) => (
                   <TaskRow
                     key={task.id}
                     task={task}
                     dim={picked?.id === task.id}
                     displayTime={taskProgress[task.id] != null ? `${formatMmSs(taskProgress[task.id])} left` : undefined}
+                    dragging={taskDragIndex === i}
+                    dropTarget={taskDragIndex !== null && taskOverIndex === i && taskOverIndex !== taskDragIndex}
                     onComplete={() => handleDone(task)}
                     onDelete={() => handleDeleteTask(task)}
                     onEdit={() => setEditingTask(task)}
+                    onGripPointerDown={() => startTaskDrag(i)}
                   />
                 ))}
               </div>

@@ -87,6 +87,7 @@ interface AppContextType {
   completedTasks: CompletedTask[];
   completeTask: (taskId: string, minutesActual: number) => void;
   uncompleteTask: (completedTaskId: string) => void;
+  reorderTasks: (next: Task[]) => void;
 
   pomodoroSession: PomodoroSession | null;
   taskProgress: Record<string, number>;
@@ -140,6 +141,7 @@ interface AppContextType {
   partialRestDays: { date: Date; pct: number }[];
   toggleRestTask: (id: string) => void;
   addRestTask: (name: string, durationMinutes?: number, category?: RestCategory) => void;
+  reorderRestTasks: (next: RestTask[]) => void;
   removeRestTask: (id: string) => void;
 
   activeRestTimer: ActiveRestTimer | null;
@@ -493,6 +495,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const reorderTasks = (next: Task[]) => {
+    setTasks(next);
+    const { userId: uid } = syncRef.current;
+    if (uid) next.forEach((t, i) => dbUpsertTask(uid, t, i));
+  };
+
   const startPomodoro = (task: Task) => {
     const totalSeconds = task.minutes * 60;
     if (pomodoroSession && pomodoroSession.taskId !== task.id) {
@@ -804,6 +812,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (uid) dbUpsertRestTask(uid, newTask);
   };
 
+  // Reorders just the tracked (non-preset) habits — Quick Rest presets are a
+  // fixed set and always render in their own section, so their relative
+  // position in this combined array doesn't affect anything on screen.
+  const reorderRestTasks = (next: RestTask[]) => {
+    setRestTasks((prev) => [...prev.filter((t) => t.isPreset), ...next]);
+  };
+
   const removeRestTask = (id: string) => {
     const task = restTasks.find((t) => t.id === id);
     if (!task || task.isPreset) return;
@@ -1060,7 +1075,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value: AppContextType = {
     tasks, addTask, updateTask, deleteTask,
-    completedTasks, completeTask, uncompleteTask,
+    completedTasks, completeTask, uncompleteTask, reorderTasks,
     pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, tickPomodoro,
     resumedSession, consumeResumedSession,
     defaultTimerMinutes, setDefaultTimerMinutes,
@@ -1072,7 +1087,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     streak, bestStreak, hasActivityToday, achievementValues, unlockedTierIds, spinCount, incrementSpinCount,
     seenAchievements, markAchievementSeen,
     pendingAchievementToast, clearAchievementToast,
-    restTasks, completedRestDays, partialRestDays, toggleRestTask, addRestTask, removeRestTask,
+    restTasks, completedRestDays, partialRestDays, toggleRestTask, addRestTask, removeRestTask, reorderRestTasks,
     activeRestTimer, startRestTimer, cancelRestTimer, tickRestTimer,
     todayMood, setTodayMood,
     restGoalTier, setRestGoalTier,
