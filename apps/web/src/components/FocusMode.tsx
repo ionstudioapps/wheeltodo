@@ -2,114 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "@/context/AppContext";
-import { WIcon, Toggle, ConfettiBurst, formatMmSs } from "@/components/ui/kit";
-
-/* ── easing helpers (ported from the Focus Mode design) ─────────────────── */
-const c01 = (v: number) => Math.max(0, Math.min(1, v));
-const mr = (v: number, lo: number, hi: number) => c01((v - lo) / (hi - lo));
-const eO = (t: number) => 1 - Math.pow(1 - t, 3);
-const spr = (t: number) => {
-  if (t <= 0) return 0;
-  if (t >= 1) return 1;
-  return 1 + Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * ((2 * Math.PI) / 3));
-};
-const sc = (v: number) => Math.max(0.001, v);
-
-const STAGES = ["Seed", "Sprout", "Growing", "In bloom"];
-const stageOf = (p: number) => (p < 0.25 ? 0 : p < 0.5 ? 1 : p < 0.75 ? 2 : 3);
-
-/* ── FlowerHead ──────────────────────────────────────────────────────────── */
-function FlowerHead({ sz = 1, c1 = "var(--wheel-2)", c2 = "var(--wheel-3)" }: { sz?: number; c1?: string; c2?: string }) {
-  const dist = 7 * sz, pr = 6 * sz, cr = 4.8 * sz;
-  return (
-    <g>
-      {[0, 60, 120, 180, 240, 300].map((a) => {
-        const r = (a * Math.PI) / 180;
-        return <circle key={a} cx={Math.cos(r) * dist} cy={Math.sin(r) * dist} r={pr} fill={c1} opacity={0.93} />;
-      })}
-      {[30, 90, 150, 210, 270, 330].map((a) => {
-        const r = (a * Math.PI) / 180;
-        return <circle key={`i${a}`} cx={Math.cos(r) * dist * 0.55} cy={Math.sin(r) * dist * 0.55} r={pr * 0.48} fill={c1} opacity={0.3} />;
-      })}
-      <circle cx={0} cy={0} r={cr} fill={c2} />
-      <circle cx={0} cy={0} r={cr * 0.44} fill="var(--plant-seed)" opacity={0.85} />
-    </g>
-  );
-}
-
-/* ── PlantSVG: seed → sprout → growing → in bloom ────────────────────────── */
-function PlantSVG({ progress: rawP }: { progress: number }) {
-  const p = c01(rawP);
-  const stemP = eO(mr(p, 0.04, 0.52));
-  const leaf1 = spr(mr(p, 0.22, 0.4));
-  const leaf2 = spr(mr(p, 0.4, 0.57));
-  const leaf3 = spr(mr(p, 0.57, 0.73));
-  const branchP = eO(mr(p, 0.62, 0.78));
-  const budP = spr(mr(p, 0.68, 0.84));
-  const flrP = spr(mr(p, 0.84, 1.0));
-  const seedOp = 1 - eO(mr(p, 0.1, 0.26));
-  const budOp = c01(1 - mr(p, 0.82, 0.96));
-
-  const STEM = "M 100 64 C 104 76 89 90 101 112 C 112 135 90 159 101 182 C 111 205 91 225 100 244";
-  const SL = 225;
-
-  return (
-    <svg viewBox="0 0 200 310" preserveAspectRatio="xMidYMax meet" style={{ width: "100%", height: "100%", overflow: "visible" }}>
-      <ellipse cx="100" cy="305" rx="44" ry="4.5" fill="var(--bg-overlay)" opacity="0.2" />
-
-      {/* Pot */}
-      <path d="M 43 250 L 157 250 L 143 300 L 57 300 Z" fill="var(--plant-pot)" />
-      <path d="M 43 250 L 82 250 L 69 300 L 57 300 Z" fill="var(--plant-leaf-b)" opacity="0.18" />
-      <rect x="36" y="233" width="128" height="19" rx="9.5" fill="var(--plant-pot-rim)" />
-
-      {/* Soil */}
-      <ellipse cx="100" cy="246" rx="56" ry="7.5" fill="var(--plant-soil)" />
-
-      {/* Seed */}
-      <g opacity={seedOp}>
-        <ellipse cx="100" cy="236" rx="12" ry="8.5" fill="var(--plant-seed)" transform="rotate(-9,100,236)" />
-        <path d="M 97 229 Q 100.5 223 104 229" stroke="var(--plant-soil)" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-      </g>
-
-      {/* Stem */}
-      <path d={STEM} fill="none" stroke="var(--plant-stem)" strokeWidth="5.5" strokeLinecap="round" strokeDasharray={SL} strokeDashoffset={SL * (1 - stemP)} />
-
-      {/* Leaf pairs */}
-      <g transform={`translate(97,216) scale(${sc(leaf1)})`}>
-        <path d="M 0 0 C -8 -2 -24 -9 -25 -20 C -26 -29 -13 -31 -7 -25 C -3 -21 -1 -10 0 0" fill="var(--plant-leaf-a)" />
-        <path d="M 0 0 C  8 -2  24 -9  25 -20 C  26 -29  13 -31  7 -25 C  3 -21  1 -10 0 0" fill="var(--plant-leaf-b)" />
-      </g>
-      <g transform={`translate(101,180) scale(${sc(leaf2)})`}>
-        <path d="M 0 0 C -8 -3 -28 -11 -31 -24 C -33 -34 -18 -37 -10 -30 C -4 -25 -1 -12 0 0" fill="var(--plant-leaf-a)" />
-        <path d="M 0 0 C  8 -3  28 -11  31 -24 C  33 -34  18 -37  10 -30 C  4 -25  1 -12 0 0" fill="var(--plant-leaf-b)" />
-      </g>
-      <g transform={`translate(103,135) scale(${sc(leaf3)})`}>
-        <path d="M 0 0 C -9 -3 -30 -13 -33 -27 C -36 -38 -20 -42 -12 -34 C -5 -28 -1 -14 0 0" fill="var(--plant-leaf-a)" />
-        <path d="M 0 0 C  9 -3  30 -13  33 -27 C  36 -38  20 -42  12 -34 C  5 -28  1 -14 0 0" fill="var(--plant-leaf-b)" />
-      </g>
-
-      {/* Branches */}
-      {["M 100 121 C 87 113 82 103 80 92", "M 100 119 C 113 111 118 101 120 90"].map((d, i) => (
-        <path key={i} d={d} fill="none" stroke="var(--plant-stem)" strokeWidth="3.5" strokeLinecap="round" strokeDasharray={44} strokeDashoffset={44 * (1 - branchP)} />
-      ))}
-
-      {/* Buds */}
-      <g opacity={budOp}>
-        {([[80, 92, 5, 8.5, "var(--wheel-2)"], [120, 90, 4.5, 8, "var(--wheel-1)"], [100, 64, 6, 10, "var(--wheel-2)"]] as const).map(([x, y, rx, ry, c], i) => (
-          <g key={i} transform={`translate(${x},${y}) scale(${sc(budP)})`}>
-            <ellipse cx={0} cy={0} rx={rx} ry={ry} fill={c} />
-            <ellipse cx={0} cy={-ry * 0.36} rx={rx * 0.62} ry={ry * 0.44} fill="var(--wheel-3)" />
-          </g>
-        ))}
-      </g>
-
-      {/* Flowers */}
-      <g transform={`translate(80, 92) scale(${sc(flrP)})`}><FlowerHead sz={0.9} c1="var(--wheel-1)" c2="var(--wheel-3)" /></g>
-      <g transform={`translate(120, 90) scale(${sc(flrP)})`}><FlowerHead sz={0.9} c1="var(--wheel-2)" c2="var(--wheel-3)" /></g>
-      <g transform={`translate(100, 64) scale(${sc(flrP)})`}><FlowerHead sz={1.12} c1="var(--wheel-2)" c2="var(--wheel-3)" /></g>
-    </svg>
-  );
-}
+import { WIcon, Toggle, ConfettiBurst, Ring, formatMmSs } from "@/components/ui/kit";
 
 /* ── Abandon modal ───────────────────────────────────────────────────────── */
 function AbandonModal({ onKeep, onLeave }: { onKeep: () => void; onLeave: () => void }) {
@@ -122,7 +15,7 @@ function AbandonModal({ onKeep, onLeave }: { onKeep: () => void; onLeave: () => 
         <div style={{ width: 40, height: 4, background: "var(--border-soft)", borderRadius: 2, margin: "0 auto 14px" }} />
         <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "var(--text-primary)" }}>Leave session?</p>
         <p style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-          Your plant will stay where it is. The session won&apos;t count toward today.
+          The session won&apos;t count toward today.
         </p>
         <button onClick={onKeep} className="wt-press" style={{ background: "var(--action-primary)", color: "var(--action-on-primary)", border: "none", borderRadius: "var(--r-pill)", fontSize: 17, fontWeight: 500, padding: "17px 32px", cursor: "pointer", width: "100%" }}>
           Keep going.
@@ -208,7 +101,6 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
   const total = pomodoroSession?.totalSeconds ?? 1;
   const remaining = pomodoroSession?.remainingSeconds ?? 0;
   const progress = phase === "complete" ? 1 : Math.min((total - remaining) / total, 1);
-  const stage = stageOf(progress);
   const paused = phase === "session" && !pomodoroSession?.isRunning;
   const durMin = Math.round(total / 60);
 
@@ -224,16 +116,18 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
                 <WIcon name="arrowL" size={20} />
               </button>
               <p style={{ margin: "8px 0", fontSize: 12, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Focus on.</p>
-              <p style={{ margin: "0 0 14px", fontSize: 22, fontWeight: 600, lineHeight: 1.25, color: "var(--text-primary)", overflowWrap: "anywhere" }}>{pomodoroSession?.taskName}</p>
+              <p style={{ margin: "0 0 14px", fontSize: 22, fontWeight: 600, lineHeight: 1.25, color: "var(--text-primary)", overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{pomodoroSession?.taskName}</p>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--bg-card)", border: "1px solid var(--border-hairline)", borderRadius: "var(--r-pill)", padding: "5px 12px" }}>
                 <WIcon name="clock" size={13} color="var(--text-secondary)" />
                 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-secondary)" }}>{durMin} min</span>
               </span>
             </div>
-            <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "12px 32px 0", minHeight: 0 }}>
-              <div style={{ width: "100%", maxWidth: 260, aspectRatio: "200/310", flexShrink: 0 }}>
-                <PlantSVG progress={0} />
-              </div>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 32px 0", minHeight: 0 }}>
+              <Ring progress={0} size={230} stroke={12}>
+                <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 44, fontWeight: 300, color: "var(--text-primary)", letterSpacing: "0.04em" }}>
+                  {formatMmSs(total)}
+                </span>
+              </Ring>
             </div>
             <div style={{ padding: "0 24px 44px", flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 0", borderTop: "1px solid var(--border-hairline)", gap: 16 }}>
@@ -297,25 +191,19 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
               </button>
             </div>
 
-            <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "8px 32px 0", minHeight: 0 }}>
-              <div style={{ width: "100%", maxWidth: 260, aspectRatio: "200/310", flexShrink: 0 }}>
-                <PlantSVG progress={progress} />
-              </div>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 32px 0", minHeight: 0 }}>
+              <Ring progress={progress} size={260} stroke={12}>
+                {showTimer ? (
+                  <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 48, fontWeight: 300, color: "var(--text-primary)", letterSpacing: "0.04em", animation: "wt-fade-in 280ms ease-out" }}>
+                    {formatMmSs(remaining)}
+                  </span>
+                ) : paused ? (
+                  <span style={{ fontSize: 15, fontWeight: 500, color: "var(--text-muted)", letterSpacing: "0.06em" }}>Paused</span>
+                ) : null}
+              </Ring>
             </div>
 
-            <div style={{ padding: "8px 24px 44px", flexShrink: 0 }}>
-              <div style={{ textAlign: "center", marginBottom: showTimer ? 4 : 20 }}>
-                <p key={stage} className="script" style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: 54, color: "var(--accent)", lineHeight: 1, animation: "wt-stage-pop 420ms var(--ease-out) both" }}>
-                  {STAGES[stage]}<span>.</span>
-                </p>
-              </div>
-              {showTimer && (
-                <div style={{ textAlign: "center", marginBottom: 20, animation: "wt-fade-in 280ms ease-out" }}>
-                  <p style={{ margin: 0, fontVariantNumeric: "tabular-nums", fontSize: 18, fontWeight: 300, color: "var(--text-secondary)", letterSpacing: "0.08em" }}>
-                    {formatMmSs(remaining)}
-                  </p>
-                </div>
-              )}
+            <div style={{ padding: "20px 24px 44px", flexShrink: 0 }}>
               <button onClick={paused ? resumePomodoro : pausePomodoro} className="wt-press" style={{ background: "var(--action-primary)", color: "var(--action-on-primary)", border: "none", borderRadius: "var(--r-pill)", fontSize: 17, fontWeight: 500, padding: "17px 32px", cursor: "pointer", width: "100%", marginBottom: 4 }}>
                 {paused ? "Resume." : "Pause."}
               </button>
@@ -347,10 +235,10 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
                 {taskNameRef.current}
               </p>
             </div>
-            <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "8px 32px 0", minHeight: 0 }}>
-              <div style={{ width: "100%", maxWidth: 260, aspectRatio: "200/310", flexShrink: 0 }}>
-                <PlantSVG progress={1} />
-              </div>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "8px 32px 0", minHeight: 0 }}>
+              <Ring progress={1} size={230} stroke={12} color="var(--action-success)">
+                <WIcon name="check" size={64} stroke={2.4} color="var(--action-success)" />
+              </Ring>
             </div>
             <div style={{ padding: "8px 24px 44px", flexShrink: 0 }}>
               <div style={{ textAlign: "center", marginBottom: 24 }}>

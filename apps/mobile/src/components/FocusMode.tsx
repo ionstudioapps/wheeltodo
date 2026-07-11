@@ -2,17 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useRef, useState } from 'react';
 import { Linking, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Clock } from 'lucide-react-native';
+import { ArrowLeft, Check, Clock } from 'lucide-react-native';
 import { useApp } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
-import { ConfettiBurst, SpinPill, Toggle, formatMmSs, useTokens } from './kit';
-import { PlantSvg } from './PlantSvg';
+import { ConfettiBurst, Ring, SpinPill, Toggle, formatMmSs, useTokens } from './kit';
 
-/* Focus Mode — the growing-plant session.
-   Pre-start (Show timer + Study Double) → session (Seed→Sprout→Growing→In bloom) → complete. */
+/* Focus Mode — a simple countdown session.
+   Pre-start (Show timer + Study Double) → session (ring countdown) → complete. */
 
-const STAGES = ['Seed', 'Sprout', 'Growing', 'In bloom'];
-const stageOf = (p: number) => (p < 0.25 ? 0 : p < 0.5 ? 1 : p < 0.75 ? 2 : 3);
 const STUDY_KEY = 'wheelTodo.studyDouble';
 
 type Phase = 'prestart' | 'session' | 'complete';
@@ -97,7 +94,6 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
   const total = pomodoroSession?.totalSeconds ?? 1;
   const remaining = pomodoroSession?.remainingSeconds ?? 0;
   const progress = phase === 'complete' ? 1 : Math.min((total - remaining) / total, 1);
-  const stage = stageOf(progress);
   const paused = phase === 'session' && !pomodoroSession?.isRunning;
   const durMin = Math.round(total / 60);
 
@@ -121,8 +117,10 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
                 <Text style={s.durText}>{durMin} min</Text>
               </View>
             </View>
-            <View style={s.plantWrap}>
-              <PlantSvg progress={0} width={210} height={325} />
+            <View style={s.ringWrap}>
+              <Ring progress={0} size={220} stroke={12} color={t.colors.accent.main}>
+                <Text style={s.ringTime}>{formatMmSs(total)}</Text>
+              </Ring>
             </View>
             <View style={s.pad}>
               <View style={s.settingRow}>
@@ -171,15 +169,17 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
               </Pressable>
             </View>
 
-            <View style={s.plantWrap}>
-              <PlantSvg progress={progress} width={210} height={325} />
+            <View style={s.ringWrap}>
+              <Ring progress={progress} size={250} stroke={12} color={t.colors.accent.main}>
+                {showTimer ? (
+                  <Text style={[s.ringTime, { fontSize: 46 }]}>{formatMmSs(remaining)}</Text>
+                ) : paused ? (
+                  <Text style={s.pausedLabel}>Paused</Text>
+                ) : null}
+              </Ring>
             </View>
 
             <View style={s.pad}>
-              <Text style={s.stageWord}>
-                {STAGES[stage]}<Text style={{ color: t.colors.accent.main }}>.</Text>
-              </Text>
-              {showTimer && <Text style={s.timer}>{formatMmSs(remaining)}</Text>}
               <SpinPill full onPress={paused ? resumePomodoro : pausePomodoro}>
                 {paused ? 'Resume.' : 'Pause.'}
               </SpinPill>
@@ -200,7 +200,7 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
                 <View style={s.abandonSheet}>
                   <View style={s.handle} />
                   <Text style={s.abandonTitle}>Leave session?</Text>
-                  <Text style={s.abandonBody}>Your plant will stay where it is. The session won&apos;t count toward today.</Text>
+                  <Text style={s.abandonBody}>The session won&apos;t count toward today.</Text>
                   <SpinPill full onPress={() => setShowAbandon(false)}>Keep going.</SpinPill>
                   <Pressable onPress={() => { setShowAbandon(false); cancelPomodoro(); onDone(false); }} style={{ paddingVertical: 14, alignItems: 'center' }}>
                     <Text style={{ fontFamily: FONTS.sans, fontSize: 14, color: t.colors.text.secondary }}>Leave</Text>
@@ -220,8 +220,10 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
                 {taskNameRef.current}
               </Text>
             </View>
-            <View style={s.plantWrap}>
-              <PlantSvg progress={1} width={210} height={325} />
+            <View style={s.ringWrap}>
+              <Ring progress={1} size={220} stroke={12} color={t.colors.action.success}>
+                <Check size={64} color={t.colors.action.success} strokeWidth={2.4} />
+              </Ring>
             </View>
             <View style={s.pad}>
               <Text style={[s.stageWord, { fontSize: 54 }]}>In bloom<Text style={{ color: t.colors.accent.main }}>.</Text></Text>
@@ -249,7 +251,9 @@ const styles = (t: ReturnType<typeof useTokens>) => StyleSheet.create({
     borderRadius: 100, paddingHorizontal: 12, paddingVertical: 5,
   },
   durText: { fontFamily: FONTS.sansMedium, fontSize: 14, color: t.colors.text.secondary },
-  plantWrap: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 4 },
+  ringWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
+  ringTime: { fontFamily: FONTS.sansLight, fontSize: 42, letterSpacing: 1.5, color: t.colors.text.primary, fontVariant: ['tabular-nums'] },
+  pausedLabel: { fontFamily: FONTS.sansMedium, fontSize: 15, letterSpacing: 1, color: t.colors.text.muted },
   settingRow: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: t.colors.hairline },
   settingTitle: { fontFamily: FONTS.sans, fontSize: 16, color: t.colors.text.primary, marginBottom: 2 },
   settingDesc: { fontFamily: FONTS.sansLight, fontSize: 12, color: t.colors.text.muted },
@@ -258,7 +262,6 @@ const styles = (t: ReturnType<typeof useTokens>) => StyleSheet.create({
     backgroundColor: t.colors.bg.input, color: t.colors.text.primary, fontFamily: FONTS.sans, fontSize: 14,
   },
   stageWord: { fontFamily: FONTS.display, fontSize: 48, lineHeight: 60, color: t.colors.accent.main, textAlign: 'center', marginBottom: 2 },
-  timer: { fontFamily: FONTS.sansLight, fontSize: 18, letterSpacing: 2, color: t.colors.text.secondary, textAlign: 'center', marginBottom: 16, fontVariant: ['tabular-nums'] },
   sessionLinks: { flexDirection: 'row', justifyContent: 'center', gap: 26, marginTop: 12 },
   leaveText: { fontFamily: FONTS.sans, fontSize: 14, color: t.colors.text.muted, padding: 6 },
   doneEarlyText: { fontFamily: FONTS.sansMedium, fontSize: 14, color: t.colors.text.secondary, padding: 6 },
