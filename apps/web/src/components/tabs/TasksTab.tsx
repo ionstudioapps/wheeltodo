@@ -18,6 +18,8 @@ import { useDragReorder } from "@/hooks/useDragReorder";
 
 /* ── Add / edit task sheet ───────────────────────────────────────────────── */
 
+const RECAP_PROMPT_KEY = "wheelTodo.recapPromptDismissed";
+
 const DURATIONS = [
   { v: 15, l: "15m" },
   { v: 30, l: "30m" },
@@ -511,6 +513,7 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
     startPomodoro, incrementSpinCount, pomodoroSession, taskProgress,
     completedTasks, dailyGoal, streak, spinsToday, aiUsesToday, registerAiUse,
     voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
+    notifPrefs,
   } = useApp();
   const { isPremium, activate } = useSubscription();
   const { containerRef: taskListRef, dragIndex: taskDragIndex, overIndex: taskOverIndex, startDrag: startTaskDrag } = useDragReorder(tasks, reorderTasks);
@@ -519,6 +522,19 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [breakdownTask, setBreakdownTask] = useState<Task | null>(null);
   const [recapOpen, setRecapOpen] = useState(false);
+  // Sunday auto-prompt for the weekly recap. Dismissal is remembered per
+  // Sunday; hidden entirely when the recap notification toggle is off.
+  // Set in an effect (not lazy state) so SSR and first client render agree.
+  const [showRecapPrompt, setShowRecapPrompt] = useState(false);
+  useEffect(() => {
+    const today = new Date();
+    if (today.getDay() !== 0 || !notifPrefs.recap) { setShowRecapPrompt(false); return; }
+    setShowRecapPrompt(localStorage.getItem(RECAP_PROMPT_KEY) !== today.toDateString());
+  }, [notifPrefs.recap]);
+  function dismissRecapPrompt() {
+    localStorage.setItem(RECAP_PROMPT_KEY, new Date().toDateString());
+    setShowRecapPrompt(false);
+  }
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [limitOpen, setLimitOpen] = useState(false);
   const [confetti, setConfetti] = useState(false);
@@ -563,7 +579,9 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
     const startTime = performance.now();
     const frame = (now: number) => {
       const t = Math.min(1, (now - startTime) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
+      // Quartic ease-out: fast launch, long decelerating tail so the final
+      // slice crossings land as distinct, suspenseful ticks.
+      const eased = 1 - Math.pow(1 - t, 4);
       const current = startRot + totalDelta * eased;
       rotationRef.current = current;
       setRotation(current);
@@ -719,6 +737,27 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
               <Headline lead="Not sure where to start?" script="Spin" size={58} />
             )}
           </div>
+
+          {/* Sunday recap prompt */}
+          {showRecapPrompt && (
+            <div style={{ marginTop: 16, background: "var(--bg-card)", borderRadius: 20, padding: "14px 16px", boxShadow: "var(--shadow-card)", display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ width: 38, height: 38, borderRadius: 999, flexShrink: 0, background: "var(--c-coral-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <WIcon name="sparkle" size={18} color="var(--accent)" />
+              </span>
+              <button
+                onClick={() => { setRecapOpen(true); dismissRecapPrompt(); }}
+                style={{ flex: 1, textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              >
+                <span style={{ display: "block", fontSize: 14.5, fontWeight: 600, color: "var(--text-primary)" }}>It&apos;s Sunday — your week, wrapped.</span>
+                <span style={{ display: "block", fontSize: 13, fontWeight: 300, color: "var(--text-secondary)", marginTop: 2, lineHeight: 1.4 }}>
+                  See what you finished this week.
+                </span>
+              </button>
+              <button onClick={dismissRecapPrompt} aria-label="Dismiss" style={{ background: "none", border: "none", cursor: "pointer", padding: 6, color: "var(--text-muted)", display: "flex" }}>
+                <WIcon name="x" size={16} />
+              </button>
+            </div>
+          )}
 
           {/* Tutorial banner + progress */}
           {tutActive && (

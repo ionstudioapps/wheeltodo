@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 /* ── Icons (Lucide-style, stroked, currentColor) ─────────────────────────────
    Ported from the design kit (wheel/kit.jsx). */
@@ -236,6 +236,21 @@ export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, 
   const hubR = Math.max(size * 0.13, 30);
   const iconSz = size * 0.1;
 
+  // Tick feedback: each time a slice boundary passes the pointer, kick the
+  // pointer back briefly. Crossings are dense early in the spin (pointer
+  // stays deflected) and sparse as it decelerates (distinct ticks).
+  const sliceDeg = 360 / n;
+  const tickIndex = Math.floor((((rotation % 360) + 360) % 360) / sliceDeg);
+  const prevTickIndex = useRef(tickIndex);
+  const [pointerKick, setPointerKick] = useState(false);
+  useEffect(() => {
+    if (tickIndex === prevTickIndex.current) return;
+    prevTickIndex.current = tickIndex;
+    setPointerKick(true);
+    const id = setTimeout(() => setPointerKick(false), 70);
+    return () => clearTimeout(id);
+  }, [tickIndex]);
+
   const wedges = slices.map((t, i) => {
     const a0 = -Math.PI / 2 + i * slice, a1 = a0 + slice;
     const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
@@ -255,7 +270,12 @@ export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, 
   return (
     <div style={{ position: "relative", width: size, height: size + 14, display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
       {/* pointer */}
-      <div style={{ position: "absolute", top: 0, zIndex: 4, filter: "drop-shadow(0 2px 2px var(--bg-overlay))" }}>
+      <div style={{
+        position: "absolute", top: 0, zIndex: 4, filter: "drop-shadow(0 2px 2px var(--bg-overlay))",
+        transform: pointerKick ? "rotate(-13deg)" : "rotate(0deg)",
+        transformOrigin: "50% 15%",
+        transition: pointerKick ? "transform 40ms ease-out" : "transform 140ms var(--ease-out)",
+      }}>
         <svg width="26" height="20" viewBox="0 0 26 20"><path d="M13 19 L24 2 H2 Z" fill="var(--ink)" /></svg>
       </div>
       <svg width={size} height={size} style={{

@@ -1,8 +1,10 @@
-import React, { useMemo, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated, Easing, type GestureResponderHandlers, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
-import { ArrowRight, ArrowUpRight, Check, GripVertical, Mic, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import { ArrowRight, ArrowUpRight, Check, GripVertical, Mic, Plus, Sparkles, Trash2, Wand2, X } from 'lucide-react-native';
 import { useDragReorder } from '../hooks/useDragReorder';
 import { useApp, COLORS, FREE_LIMITS, type Task } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
@@ -20,6 +22,8 @@ import { TUTORIAL_TASKS, isTutorialTask, tutorialStepFor } from '../utils/tutori
 import { fnUrl, fnHeaders } from '../utils/functions';
 
 interface Suggestion { name: string; minutes: number; category?: string }
+
+const RECAP_PROMPT_KEY = 'wheelTodo.recapPromptDismissed';
 
 /* ── Task avatar ─────────────────────────────────────────────────────────── */
 
@@ -358,6 +362,7 @@ export function TasksScreen() {
     dailyGoal, streak, spinsToday, aiUsesToday, registerAiUse,
     voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
     isPremium, activatePremium, user, refreshFromCloud, cloudLoading,
+    wheelSoundEnabled, notifPrefs,
   } = useApp();
 
   const [taskSheetOpen, setTaskSheetOpen] = useState(false);
@@ -384,6 +389,21 @@ export function TasksScreen() {
     setRefreshing(true);
     await refreshFromCloud();
     setRefreshing(false);
+  }
+
+  // Sunday auto-prompt for the weekly recap. Dismissal is remembered per
+  // Sunday; hidden entirely when the recap notification toggle is off.
+  const [showRecapPrompt, setShowRecapPrompt] = useState(false);
+  useEffect(() => {
+    const today = new Date();
+    if (today.getDay() !== 0 || !notifPrefs.recap) { setShowRecapPrompt(false); return; }
+    AsyncStorage.getItem(RECAP_PROMPT_KEY).then((v) => {
+      setShowRecapPrompt(v !== today.toDateString());
+    }).catch(() => {});
+  }, [notifPrefs.recap]);
+  function dismissRecapPrompt() {
+    AsyncStorage.setItem(RECAP_PROMPT_KEY, new Date().toDateString()).catch(() => {});
+    setShowRecapPrompt(false);
   }
 
   const rotation = useRef(new Animated.Value(0)).current;
@@ -426,9 +446,31 @@ export function TasksScreen() {
     let delta = target - currentNorm;
     if (delta <= 0) delta += 360;
     const final = rotationRef.current + 6 * 360 + delta;
+
+    // Haptic tick each time a slice boundary passes the pointer — dense at
+    // launch, distinct clicks as the wheel decelerates. Throttled so early
+    // crossings don't merge into one long buzz. Respects the wheel-sound toggle.
+    let tickListener: string | null = null;
+    if (wheelSoundEnabled) {
+      let lastIdx = Math.floor((((rotationRef.current % 360) + 360) % 360) / sliceAngle);
+      let lastHapticAt = 0;
+      tickListener = rotation.addListener(({ value }) => {
+        const i = Math.floor((((value % 360) + 360) % 360) / sliceAngle);
+        if (i === lastIdx) return;
+        lastIdx = i;
+        const now = Date.now();
+        if (now - lastHapticAt < 50) return;
+        lastHapticAt = now;
+        Haptics.selectionAsync().catch(() => {});
+      });
+    }
+
     Animated.timing(rotation, {
-      toValue: final, duration: 3600, useNativeDriver: true, easing: Easing.out(Easing.cubic),
+      // Quartic ease-out: fast launch, long decelerating tail so the final
+      // ticks land one by one.
+      toValue: final, duration: 3600, useNativeDriver: true, easing: Easing.out(Easing.poly(4)),
     }).start(() => {
+      if (tickListener) rotation.removeListener(tickListener);
       rotationRef.current = final;
       setSpinning(false);
       setPicked(tasks[idx]);
@@ -524,6 +566,22 @@ export function TasksScreen() {
             <Headline lead="Not sure where to start?" script="Spin" size={56} />
           )}
         </View>
+
+        {/* Sunday recap prompt */}
+        {showRecapPrompt && (
+          <View style={[s.banner, cardShadow(t.dark), { marginTop: 16 }]}>
+            <View style={s.bannerBadge}>
+              <Sparkles size={18} color={t.colors.accent.main} strokeWidth={2} />
+            </View>
+            <Pressable style={{ flex: 1 }} onPress={() => { setRecapOpen(true); dismissRecapPrompt(); }}>
+              <Text style={s.bannerTitle}>It&apos;s Sunday — your week, wrapped.</Text>
+              <Text style={s.bannerSub}>See what you finished this week.</Text>
+            </Pressable>
+            <Pressable hitSlop={8} onPress={dismissRecapPrompt} accessibilityLabel="Dismiss">
+              <X size={16} color={t.colors.text.muted} strokeWidth={2} />
+            </Pressable>
+          </View>
+        )}
 
         {/* Tutorial banner + progress */}
         {tutActive && (
