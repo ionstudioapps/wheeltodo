@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
-  Animated, Easing, type GestureResponderHandlers, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  Animated, Easing, type GestureResponderHandlers, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { ArrowRight, ArrowUpRight, Check, GripVertical, Mic, Plus, Sparkles, Trash2, Wand2 } from 'lucide-react-native';
 import { useDragReorder } from '../hooks/useDragReorder';
@@ -11,6 +11,7 @@ import {
   TASK_CATEGORIES, TASK_ICON_PATHS, TaskWheel, WheelHub, cardShadow, formatMmSs, useTokens,
 } from '../components/kit';
 import { FocusMode } from '../components/FocusMode';
+import { SkeletonRows } from '../components/Skeleton';
 import { WeeklyRecap } from '../components/WeeklyRecap';
 import { BrainStarter } from '../components/BrainStarter';
 import { BloomChip, BloomNudge, UpgradeScreen } from '../components/Upgrade';
@@ -356,7 +357,7 @@ export function TasksScreen() {
     incrementSpinCount, pomodoroSession, taskProgress, completedTasks,
     dailyGoal, streak, spinsToday, aiUsesToday, registerAiUse,
     voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
-    isPremium, activatePremium,
+    isPremium, activatePremium, user, refreshFromCloud, cloudLoading,
   } = useApp();
 
   const [taskSheetOpen, setTaskSheetOpen] = useState(false);
@@ -375,8 +376,15 @@ export function TasksScreen() {
   const [confetti, setConfetti] = useState(false);
   const [picked, setPicked] = useState<Task | null>(null);
   const [spinning, setSpinning] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
   const { setRowRef, makePanResponder, dragIndex, overIndex } = useDragReorder(tasks, reorderTasks);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await refreshFromCloud();
+    setRefreshing(false);
+  }
 
   const rotation = useRef(new Animated.Value(0)).current;
   const rotationRef = useRef(0);
@@ -502,7 +510,12 @@ export function TasksScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg.screen }}>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 40 }}
+        refreshControl={user ? (
+          <RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={t.colors.accent.main} />
+        ) : undefined}
+      >
         {/* Headline */}
         <View style={{ paddingTop: 10 }}>
           {tutActive ? (
@@ -572,8 +585,15 @@ export function TasksScreen() {
           </View>
         )}
 
+        {/* Loading skeleton — signed-in user, first cloud pull, nothing local */}
+        {cloudLoading && tasks.length === 0 && (
+          <View style={{ paddingTop: 26 }}>
+            <SkeletonRows count={3} height={66} />
+          </View>
+        )}
+
         {/* Empty state */}
-        {tasks.length === 0 && (
+        {tasks.length === 0 && !cloudLoading && (
           <View style={{ alignItems: 'center', gap: 14, paddingVertical: 40 }}>
             <Text style={s.emptyText}>Nothing on the wheel yet.{'\n'}Add a task to get it going.</Text>
             <SpinPill onPress={() => setTaskSheetOpen(true)}>

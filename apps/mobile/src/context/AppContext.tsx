@@ -113,6 +113,10 @@ interface AppContextType {
 
   user: { name: string; email: string; initials: string; avatarId?: string } | null;
   authLoading: boolean;
+  // True only during the first cloud pull after sign-in — drives skeletons.
+  cloudLoading: boolean;
+  // Re-pulls tasks/completed/settings from Supabase (no-op when signed out).
+  refreshFromCloud: () => Promise<void>;
   login: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
@@ -257,6 +261,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [wheelSoundEnabled, setWheelSoundEnabled] = useState(true);
   const [user, setUser] = useState<{ name: string; email: string; initials: string; avatarId?: string } | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [cloudLoading, setCloudLoading] = useState(false);
   const [supabaseUserId, setSupabaseUserId] = useState<string | null>(null);
   const syncRef = useRef<{ userId: string | null }>({ userId: null });
   useEffect(() => { syncRef.current = { userId: supabaseUserId }; }, [supabaseUserId]);
@@ -618,10 +623,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load cloud data when user signs in
-  useEffect(() => {
-    if (!supabaseUserId || !loaded) return;
-    dbLoad(supabaseUserId).then(({ tasks: dbTasks, completedTasks: dbCompleted, settings }) => {
+  // Re-pull cloud data for the signed-in user. Shared by the sign-in effect
+  // and pull-to-refresh; swallows network errors (local data stays authoritative).
+  const refreshFromCloud = useCallback(async () => {
+    const uid = syncRef.current.userId;
+    if (!uid) return;
+    try {
+      const { tasks: dbTasks, completedTasks: dbCompleted, settings } = await dbLoad(uid);
       if (dbTasks.length > 0) setTasks(dbTasks);
       if (dbCompleted.length > 0) {
         setCompletedTasks(dbCompleted.map((ct) => ({ ...ct, completedAt: new Date(ct.completedAt) })));
@@ -631,8 +639,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setDefaultTimerMinutes(settings.default_timer_minutes);
         setRestGoalTierState(settings.rest_goal_tier as RestGoalTier);
       }
-    }).catch(() => {});
-  }, [supabaseUserId, loaded]);
+    } catch {
+      // offline / transient — keep local state
+    }
+  }, []);
+
+  // Load cloud data when user signs in
+  useEffect(() => {
+    if (!supabaseUserId || !loaded) return;
+    setCloudLoading(true);
+    refreshFromCloud().finally(() => setCloudLoading(false));
+  }, [supabaseUserId, loaded, refreshFromCloud]);
 
   // Sync settings whenever they change
   useEffect(() => {
@@ -1082,7 +1099,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dailyGoal, setDailyGoal,
     notificationsEnabled, setNotificationsEnabled,
     wheelSoundEnabled, setWheelSoundEnabled,
-    user, authLoading, login, signUp, logout, updateUser,
+    user, authLoading, cloudLoading, refreshFromCloud, login, signUp, logout, updateUser,
     categories, addCategory, removeCategory,
     streak, bestStreak, hasActivityToday, achievementValues, unlockedTierIds, spinCount, incrementSpinCount,
     seenAchievements, markAchievementSeen,

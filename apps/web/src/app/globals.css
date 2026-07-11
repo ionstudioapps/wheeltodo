@@ -343,6 +343,14 @@ button { font-family: inherit; }
 .wt-press { transition: transform 140ms var(--ease-out); }
 .wt-press:active { transform: scale(0.97); }
 
+/* Loading skeleton — pulsing placeholder card while cloud data loads */
+@keyframes wt-skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.wt-skeleton {
+  background: var(--bg-sunk);
+  border-radius: 18px;
+  animation: wt-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
 /* Focus outlines: accent, never blue */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 

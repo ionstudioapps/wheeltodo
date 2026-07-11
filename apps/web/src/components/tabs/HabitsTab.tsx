@@ -174,7 +174,7 @@ function HabitRow({ habit, streakDays, week, dragging, dropTarget, onToggle, onD
 /* ── Main HabitsTab ──────────────────────────────────────────────────────── */
 
 export function HabitsTab() {
-  const { restTasks, toggleRestTask, addRestTask, removeRestTask, reorderRestTasks, habitHistory, habitStreak } = useApp();
+  const { restTasks, toggleRestTask, addRestTask, removeRestTask, reorderRestTasks, habitHistory, habitStreak, cloudLoading } = useApp();
   const { isPremium, activate } = useSubscription();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -317,7 +317,15 @@ export function HabitsTab() {
               />
             ))}
 
-            {habits.length === 0 && (
+            {cloudLoading && habits.length === 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }} aria-hidden>
+                {[88, 88].map((h, i) => (
+                  <div key={i} className="wt-skeleton" style={{ height: h, animationDelay: `${i * 120}ms` }} />
+                ))}
+              </div>
+            )}
+
+            {habits.length === 0 && !cloudLoading && (
               <p style={{ margin: "4px 0 6px", fontSize: 14, fontWeight: 300, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.5 }}>
                 Small and daily beats big and rare.
               </p>

@@ -181,6 +181,11 @@ interface AppContextType {
   notifPrefs: NotifPrefs;
   setNotifPref: (key: keyof NotifPrefs, value: boolean) => void;
 
+  // True only during the first cloud pull after sign-in — drives skeletons.
+  cloudLoading: boolean;
+  // Re-pulls tasks/completed/settings from Supabase (no-op when signed out).
+  refreshFromCloud: () => Promise<void>;
+
   restTasks: RestTask[];
   completedRestDays: Date[];
   partialRestDays: { date: Date; pct: number }[];
@@ -306,6 +311,31 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   // Ref so mutation closures always read current userId without needing re-memoization
   const syncRef = useRef({ userId });
   useEffect(() => { syncRef.current = { userId }; }, [userId]);
+  const [cloudLoading, setCloudLoading] = useState(false);
+
+  // Re-pulls tasks/completed/settings from Supabase for the signed-in user.
+  // Shared by the sign-in load and manual refreshes; swallows network errors
+  // (local data stays authoritative).
+  const refreshFromCloud = useCallback(async () => {
+    const uid = syncRef.current.userId;
+    if (!uid) return;
+    try {
+      const { tasks: dbTasks, completedTasks: dbCompleted, settings } = await dbLoad(uid);
+      const premium = settings?.is_premium ?? false;
+      setIsPremium(premium);
+      lsSet(KEYS.isPremium, premium);
+
+      if (dbTasks.length > 0) setTasks(dbTasks);
+      if (dbCompleted.length > 0) setCompletedTasks(dbCompleted);
+      if (settings) {
+        setDailyGoalState(settings.daily_goal);
+        setDefaultTimerMinutesState(settings.default_timer_minutes);
+        setRestGoalTierState(settings.rest_goal_tier as RestGoalTier);
+      }
+    } catch {
+      // offline / transient — keep local state
+    }
+  }, []);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -379,21 +409,10 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
 
     // For logged-in users: load cloud data (sync available to all signed-in users)
     if (userId) {
-      dbLoad(userId).then(({ tasks: dbTasks, completedTasks: dbCompleted, customRestTaskIds, settings }) => {
-        const premium = settings?.is_premium ?? false;
-        setIsPremium(premium);
-        lsSet(KEYS.isPremium, premium);
-
-        if (dbTasks.length > 0) setTasks(dbTasks);
-        if (dbCompleted.length > 0) setCompletedTasks(dbCompleted);
-        if (settings) {
-          setDailyGoalState(settings.daily_goal);
-          setDefaultTimerMinutesState(settings.default_timer_minutes);
-          setRestGoalTierState(settings.rest_goal_tier as RestGoalTier);
-        }
-      }).catch(() => {});
+      setCloudLoading(true);
+      refreshFromCloud().finally(() => setCloudLoading(false));
     }
-  }, [userId]);
+  }, [userId, refreshFromCloud]);
 
   // Persist whenever state changes
   useEffect(() => { if (loaded) lsSet(KEYS.tasks, tasks); }, [tasks, loaded]);
@@ -894,6 +913,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     streak, bestStreak, hasActivityToday, spinCount, incrementSpinCount, achievementValues,
     spinsToday, aiUsesToday, registerAiUse, habitHistory, habitStreak, notifPrefs, setNotifPref,
     voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
+    cloudLoading, refreshFromCloud,
     restTasks, completedRestDays, partialRestDays, toggleRestTask, addRestTask, removeRestTask, reorderRestTasks,
     activeRestTimer, startRestTimer, cancelRestTimer, tickRestTimer,
     todayMood, setTodayMood,

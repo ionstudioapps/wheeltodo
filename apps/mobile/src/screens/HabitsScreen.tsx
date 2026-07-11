@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useMemo, useState } from 'react';
-import { type GestureResponderHandlers, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { type GestureResponderHandlers, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Check, GripVertical, Plus, Trash2 } from 'lucide-react-native';
 import { useDragReorder } from '../hooks/useDragReorder';
 import { useApp, FREE_LIMITS, type RestCategory, type RestTask } from '../context/AppContext';
@@ -8,6 +8,7 @@ import { FONTS } from '../theme/tokens';
 import { ConfettiField, Headline, Ring, SectionLabel, Sheet, SpinPill, cardShadow, useTokens } from '../components/kit';
 import { BloomChip, BloomNudge, UpgradeScreen } from '../components/Upgrade';
 import { Toast, useToast } from '../components/Toast';
+import { SkeletonRows } from '../components/Skeleton';
 
 /* "Show up. Every day." — heatmap, stat cards, habit rows, 3-habit Seed cap. */
 
@@ -171,8 +172,15 @@ export function HabitsScreen() {
   const t = useTokens();
   const {
     restTasks, toggleRestTask, addRestTask, removeRestTask, reorderRestTasks,
-    habitHistory, habitStreak, isPremium, activatePremium,
+    habitHistory, habitStreak, isPremium, activatePremium, user, refreshFromCloud, cloudLoading,
   } = useApp();
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await refreshFromCloud();
+    setRefreshing(false);
+  }
 
   const [addOpen, setAddOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -240,7 +248,12 @@ export function HabitsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg.screen }}>
       {allDone && <ConfettiField count={24} />}
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 40 }}
+        refreshControl={user ? (
+          <RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} tintColor={t.colors.accent.main} />
+        ) : undefined}
+      >
         <View style={{ paddingTop: 10 }}>
           {allDone ? (
             <Headline lead={`All ${habits.length === 3 ? 'three' : habits.length}, done.`} script="See you tomorrow" size={42} />
@@ -315,7 +328,9 @@ export function HabitsScreen() {
               </View>
             ))}
 
-            {habits.length === 0 && (
+            {cloudLoading && habits.length === 0 && <SkeletonRows count={2} height={88} />}
+
+            {habits.length === 0 && !cloudLoading && (
               <Text style={s.emptyLine}>Small and daily beats big and rare.</Text>
             )}
 

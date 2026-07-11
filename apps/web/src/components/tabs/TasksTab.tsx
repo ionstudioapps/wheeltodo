@@ -507,7 +507,7 @@ interface TasksTabProps {
 
 export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
   const {
-    tasks, addTask, updateTask, deleteTask, completeTask, reorderTasks,
+    tasks, addTask, updateTask, deleteTask, completeTask, reorderTasks, cloudLoading,
     startPomodoro, incrementSpinCount, pomodoroSession, taskProgress,
     completedTasks, dailyGoal, streak, spinsToday, aiUsesToday, registerAiUse,
     voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
@@ -766,8 +766,17 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
             {metaLine}
           </div>
 
+          {/* Loading skeleton — signed-in user, first cloud pull, nothing local */}
+          {cloudLoading && tasks.length === 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 26 }} aria-hidden>
+              {[72, 72, 72].map((h, i) => (
+                <div key={i} className="wt-skeleton" style={{ height: h, animationDelay: `${i * 120}ms` }} />
+              ))}
+            </div>
+          )}
+
           {/* Empty state */}
-          {tasks.length === 0 && (
+          {tasks.length === 0 && !cloudLoading && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "40px 0 12px" }}>
               <p style={{ margin: 0, fontSize: 15, fontWeight: 300, color: "var(--text-secondary)", textAlign: "center", lineHeight: 1.55 }}>
                 Nothing on the wheel yet.<br />Add a task to get it going.
