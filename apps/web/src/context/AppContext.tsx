@@ -46,6 +46,11 @@ export interface PomodoroSession {
   totalSeconds: number;
   remainingSeconds: number;
   isRunning: boolean;
+  // Epoch ms this countdown will hit zero, present only while isRunning.
+  // Lets us recompute remainingSeconds from wall-clock time instead of a
+  // naive per-tick decrement, so the timer stays correct across backgrounded
+  // tabs, sleep, and full reloads instead of silently stalling.
+  endsAt?: number;
 }
 
 export type RestCategory = "Physical" | "Mental" | "Social" | "Nourishment" | "My Tasks";
@@ -66,6 +71,8 @@ export interface RestTask {
   durationMinutes: number;
   category: RestCategory;
   skippedToday?: boolean;
+  color?: string;
+  icon?: string;
 }
 
 export interface ActiveRestTimer {
@@ -91,6 +98,22 @@ export const PRESET_REST_TASKS: RestTask[] = [
 // Default wheel colours — warm-start theme. Override per-theme via CSS --wheel-N vars.
 export const COLORS = ["#EDB590", "#E59880", "#9DC4BC", "#F0D29D", "#ADA8CC", "#D4A5C8", "#BCD4A5", "#EDBDAC"];
 
+// Seed (free) tier caps — Bloom removes all of them (Brain Starter goes 1/week → 1/day).
+export const FREE_LIMITS = {
+  spinsPerDay: 5,
+  tasksOnWheel: 8,
+  habits: 3,
+  aiBreakdownsPerDay: 1,
+  voicePerMonth: 1,
+  brainGamesPerWeek: 1,
+};
+
+export interface NotifPrefs {
+  nudge: boolean;   // gentle daily nudge
+  focus: boolean;   // focus session complete
+  recap: boolean;   // weekly recap
+}
+
 const DEFAULT_CATEGORIES = ["Work", "Personal", "Learning", "Health"];
 
 const defaultTasks: Task[] = [
@@ -106,6 +129,7 @@ const defaultTasks: Task[] = [
 
 interface AppContextType {
   tasks: Task[];
+  seedTasks: (tasks: Task[]) => void;
   addTask: (task: Omit<Task, "id">) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
@@ -113,6 +137,7 @@ interface AppContextType {
   completedTasks: CompletedTask[];
   completeTask: (taskId: string, minutesActual: number) => void;
   uncompleteTask: (completedTaskId: string) => void;
+  reorderTasks: (next: Task[]) => void;
 
   pomodoroSession: PomodoroSession | null;
   taskProgress: Record<string, number>;
@@ -120,7 +145,13 @@ interface AppContextType {
   pausePomodoro: () => void;
   resumePomodoro: () => void;
   completePomodoro: () => void;
+  cancelPomodoro: () => void;
   tickPomodoro: () => void;
+  // True for one render after a running/paused session was restored from
+  // storage (reload, or reopening the app mid-session). FocusMode reads this
+  // once to skip the pre-start screen and drop straight into the session.
+  resumedSession: boolean;
+  consumeResumedSession: () => void;
 
   dailyGoal: number;
   setDailyGoal: (goal: number) => void;
@@ -138,11 +169,29 @@ interface AppContextType {
   incrementSpinCount: () => void;
   achievementValues: AchievementValues;
 
+  spinsToday: number;
+  aiUsesToday: number;
+  registerAiUse: () => void;
+  voiceUsesThisMonth: number;
+  registerVoiceUse: () => void;
+  lastBrainGameAt: string | null;
+  registerBrainGame: () => void;
+  habitHistory: Record<string, string[]>;
+  habitStreak: (habitId: string) => number;
+  notifPrefs: NotifPrefs;
+  setNotifPref: (key: keyof NotifPrefs, value: boolean) => void;
+
+  // True only during the first cloud pull after sign-in — drives skeletons.
+  cloudLoading: boolean;
+  // Re-pulls tasks/completed/settings from Supabase (no-op when signed out).
+  refreshFromCloud: () => Promise<void>;
+
   restTasks: RestTask[];
   completedRestDays: Date[];
   partialRestDays: { date: Date; pct: number }[];
   toggleRestTask: (id: string) => void;
-  addRestTask: (name: string, durationMinutes?: number) => void;
+  addRestTask: (name: string, durationMinutes?: number, color?: string, icon?: string, category?: RestCategory) => void;
+  reorderRestTasks: (next: RestTask[]) => void;
   removeRestTask: (id: string) => void;
 
   activeRestTimer: ActiveRestTimer | null;
@@ -196,6 +245,7 @@ function applyTheme(t: ThemeName) {
   const html = document.documentElement;
   Object.keys(THEMES).forEach((name) => html.classList.remove(`theme-${name}`));
   if (t !== 'warm-start') html.classList.add(`theme-${t}`);
+  html.setAttribute("data-theme", t);
 }
 
 const KEYS = {
@@ -215,6 +265,17 @@ const KEYS = {
   hasSeenOnboarding: "wt.hasSeenOnboarding",
   isPremium: "wt.isPremium",
   theme: "wt.theme",
+  spinsToday: "wt.spinsToday",
+  spinsTodayDate: "wt.spinsTodayDate",
+  aiUsesToday: "wt.aiUsesToday",
+  aiUsesTodayDate: "wt.aiUsesTodayDate",
+  voiceUsesMonth: "wt.voiceUsesMonth",
+  voiceUsesMonthKey: "wt.voiceUsesMonthKey",
+  lastBrainGameAt: "wt.lastBrainGameAt",
+  habitHistory: "wt.habitHistory",
+  notifPrefs: "wt.notifPrefs",
+  pomodoroSession: "wt.pomodoroSession",
+  taskProgress: "wt.taskProgress",
 } as const;
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -227,6 +288,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const [completedTasks, setCompletedTasks] = useState<CompletedTask[]>([]);
   const [pomodoroSession, setPomodoroSession] = useState<PomodoroSession | null>(null);
   const [taskProgress, setTaskProgress] = useState<Record<string, number>>({});
+  const [resumedSession, setResumedSession] = useState(false);
   const [dailyGoal, setDailyGoalState] = useState(6);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [spinCount, setSpinCount] = useState(0);
@@ -240,9 +302,40 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
   const [theme, setThemeState] = useState<ThemeName>('warm-start');
+  const [spinsToday, setSpinsToday] = useState(0);
+  const [aiUsesToday, setAiUsesToday] = useState(0);
+  const [voiceUsesThisMonth, setVoiceUsesThisMonth] = useState(0);
+  const [lastBrainGameAt, setLastBrainGameAt] = useState<string | null>(null);
+  const [habitHistory, setHabitHistory] = useState<Record<string, string[]>>({});
+  const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({ nudge: true, focus: true, recap: true });
   // Ref so mutation closures always read current userId without needing re-memoization
   const syncRef = useRef({ userId });
   useEffect(() => { syncRef.current = { userId }; }, [userId]);
+  const [cloudLoading, setCloudLoading] = useState(false);
+
+  // Re-pulls tasks/completed/settings from Supabase for the signed-in user.
+  // Shared by the sign-in load and manual refreshes; swallows network errors
+  // (local data stays authoritative).
+  const refreshFromCloud = useCallback(async () => {
+    const uid = syncRef.current.userId;
+    if (!uid) return;
+    try {
+      const { tasks: dbTasks, completedTasks: dbCompleted, settings } = await dbLoad(uid);
+      const premium = settings?.is_premium ?? false;
+      setIsPremium(premium);
+      lsSet(KEYS.isPremium, premium);
+
+      if (dbTasks.length > 0) setTasks(dbTasks);
+      if (dbCompleted.length > 0) setCompletedTasks(dbCompleted);
+      if (settings) {
+        setDailyGoalState(settings.daily_goal);
+        setDefaultTimerMinutesState(settings.default_timer_minutes);
+        setRestGoalTierState(settings.rest_goal_tier as RestGoalTier);
+      }
+    } catch {
+      // offline / transient — keep local state
+    }
+  }, []);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -251,6 +344,19 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
 
     const rawCompleted = ls<Array<CompletedTask & { completedAt: string }>>(KEYS.completedTasks, []);
     setCompletedTasks(rawCompleted.map((t) => ({ ...t, completedAt: new Date(t.completedAt) })));
+
+    // Restore an in-flight focus session, correcting for wall-clock time
+    // elapsed while this tab/window wasn't running (backgrounded, or a full
+    // reload). Without this the countdown just silently stalls on reopen.
+    const savedSession = ls<PomodoroSession | null>(KEYS.pomodoroSession, null);
+    if (savedSession) {
+      const restored = savedSession.isRunning && savedSession.endsAt
+        ? { ...savedSession, remainingSeconds: Math.max(0, Math.round((savedSession.endsAt - Date.now()) / 1000)) }
+        : savedSession;
+      setPomodoroSession(restored);
+      setResumedSession(true);
+    }
+    setTaskProgress(ls<Record<string, number>>(KEYS.taskProgress, {}));
 
     setCategories(ls<string[]>(KEYS.categories, DEFAULT_CATEGORIES));
     setSpinCount(ls<number>(KEYS.spinCount, 0));
@@ -290,29 +396,33 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     setThemeState(savedTheme);
     applyTheme(savedTheme);
 
+    // Daily counters reset at midnight
+    setSpinsToday(ls<string>(KEYS.spinsTodayDate, "") === todayStr ? ls<number>(KEYS.spinsToday, 0) : 0);
+    setAiUsesToday(ls<string>(KEYS.aiUsesTodayDate, "") === todayStr ? ls<number>(KEYS.aiUsesToday, 0) : 0);
+    const monthKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
+    setVoiceUsesThisMonth(ls<string>(KEYS.voiceUsesMonthKey, "") === monthKey ? ls<number>(KEYS.voiceUsesMonth, 0) : 0);
+    setLastBrainGameAt(ls<string | null>(KEYS.lastBrainGameAt, null));
+    setHabitHistory(ls<Record<string, string[]>>(KEYS.habitHistory, {}));
+    setNotifPrefs(ls<NotifPrefs>(KEYS.notifPrefs, { nudge: true, focus: true, recap: true }));
+
     setLoaded(true);
 
     // For logged-in users: load cloud data (sync available to all signed-in users)
     if (userId) {
-      dbLoad(userId).then(({ tasks: dbTasks, completedTasks: dbCompleted, customRestTaskIds, settings }) => {
-        const premium = settings?.is_premium ?? false;
-        setIsPremium(premium);
-        lsSet(KEYS.isPremium, premium);
-
-        if (dbTasks.length > 0) setTasks(dbTasks);
-        if (dbCompleted.length > 0) setCompletedTasks(dbCompleted);
-        if (settings) {
-          setDailyGoalState(settings.daily_goal);
-          setDefaultTimerMinutesState(settings.default_timer_minutes);
-          setRestGoalTierState(settings.rest_goal_tier as RestGoalTier);
-        }
-      }).catch(() => {});
+      setCloudLoading(true);
+      refreshFromCloud().finally(() => setCloudLoading(false));
     }
-  }, [userId]);
+  }, [userId, refreshFromCloud]);
 
   // Persist whenever state changes
   useEffect(() => { if (loaded) lsSet(KEYS.tasks, tasks); }, [tasks, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.completedTasks, completedTasks); }, [completedTasks, loaded]);
+  useEffect(() => {
+    if (!loaded) return;
+    if (pomodoroSession) lsSet(KEYS.pomodoroSession, pomodoroSession);
+    else localStorage.removeItem(KEYS.pomodoroSession);
+  }, [pomodoroSession, loaded]);
+  useEffect(() => { if (loaded) lsSet(KEYS.taskProgress, taskProgress); }, [taskProgress, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.categories, categories); }, [categories, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.spinCount, spinCount); }, [spinCount, loaded]);
   useEffect(() => { if (loaded) lsSet(KEYS.dailyGoal, dailyGoal); }, [dailyGoal, loaded]);
@@ -347,6 +457,13 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   }, [dailyGoal, defaultTimerMinutes, restGoalTier, loaded, userId]);
 
   // ─── Task actions ────────────────────────────────────────────────────────────
+
+  // Replace the task list wholesale (used by the tutorial to pre-load its 5 tasks)
+  const seedTasks = (seeded: Task[]) => {
+    setTasks(seeded);
+    const { userId: uid } = syncRef.current;
+    if (uid) seeded.forEach((t, i) => dbUpsertTask(uid, t, i));
+  };
 
   const addTask = (task: Omit<Task, "id">) => {
     const newTask = { ...task, id: Date.now().toString() };
@@ -408,6 +525,12 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     }
   };
 
+  const reorderTasks = (next: Task[]) => {
+    setTasks(next);
+    const { userId: uid } = syncRef.current;
+    if (uid) next.forEach((t, i) => dbUpsertTask(uid, t, i));
+  };
+
   // ─── Pomodoro ────────────────────────────────────────────────────────────────
 
   const startPomodoro = (task: Task) => {
@@ -416,30 +539,38 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
       setTaskProgress((prev) => ({ ...prev, [pomodoroSession.taskId]: pomodoroSession.remainingSeconds }));
     }
     const savedRemaining = taskProgress[task.id];
+    const remainingSeconds = savedRemaining ?? totalSeconds;
     setPomodoroSession({
       taskId: task.id,
       taskName: task.name,
       totalSeconds,
-      remainingSeconds: savedRemaining ?? totalSeconds,
+      remainingSeconds,
       isRunning: true,
+      endsAt: Date.now() + remainingSeconds * 1000,
     });
   };
 
   const pausePomodoro = () => {
-    setPomodoroSession((s) => (s ? { ...s, isRunning: false } : null));
+    setPomodoroSession((s) => {
+      if (!s) return null;
+      const remainingSeconds = s.isRunning && s.endsAt
+        ? Math.max(0, Math.round((s.endsAt - Date.now()) / 1000))
+        : s.remainingSeconds;
+      return { ...s, remainingSeconds, isRunning: false, endsAt: undefined };
+    });
   };
 
   const resumePomodoro = () => {
-    setPomodoroSession((s) => (s ? { ...s, isRunning: true } : null));
+    setPomodoroSession((s) => (s ? { ...s, isRunning: true, endsAt: Date.now() + s.remainingSeconds * 1000 } : null));
   };
 
   const completePomodoro = () => {
     if (!pomodoroSession) return;
     const { taskId } = pomodoroSession;
-    const minutesActual = Math.max(
-      1,
-      Math.ceil((pomodoroSession.totalSeconds - pomodoroSession.remainingSeconds) / 60)
-    );
+    const remainingSeconds = pomodoroSession.isRunning && pomodoroSession.endsAt
+      ? Math.max(0, Math.round((pomodoroSession.endsAt - Date.now()) / 1000))
+      : pomodoroSession.remainingSeconds;
+    const minutesActual = Math.max(1, Math.ceil((pomodoroSession.totalSeconds - remainingSeconds) / 60));
     completeTask(taskId, minutesActual);
     deleteTask(taskId);
     setPomodoroSession(null);
@@ -450,13 +581,44 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     });
   };
 
-  const tickPomodoro = useCallback(() => {
-    setPomodoroSession((s) =>
-      s && s.isRunning && s.remainingSeconds > 0
-        ? { ...s, remainingSeconds: s.remainingSeconds - 1 }
-        : s
-    );
+  const cancelPomodoro = useCallback(() => {
+    setPomodoroSession((s) => {
+      if (s) {
+        const remainingSeconds = s.isRunning && s.endsAt
+          ? Math.max(0, Math.round((s.endsAt - Date.now()) / 1000))
+          : s.remainingSeconds;
+        setTaskProgress((prev) => ({ ...prev, [s.taskId]: remainingSeconds }));
+      }
+      return null;
+    });
   }, []);
+
+  // Wall-clock based: recomputes from endsAt rather than decrementing by one,
+  // so a throttled/backgrounded interval self-corrects instead of drifting.
+  const tickPomodoro = useCallback(() => {
+    setPomodoroSession((s) => {
+      if (!s || !s.isRunning || !s.endsAt) return s;
+      const remainingSeconds = Math.max(0, Math.round((s.endsAt - Date.now()) / 1000));
+      return remainingSeconds === s.remainingSeconds ? s : { ...s, remainingSeconds };
+    });
+  }, []);
+
+  const consumeResumedSession = useCallback(() => setResumedSession(false), []);
+
+  // Correct the countdown the instant the tab regains focus, rather than
+  // waiting for the next 1s interval tick (which may itself have been
+  // throttled while backgrounded).
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible") tickPomodoro();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [tickPomodoro]);
 
   // ─── Rest timer ──────────────────────────────────────────────────────────────
 
@@ -492,30 +654,53 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   }, []);
 
   const toggleRestTask = (id: string) => {
-    setRestTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, completedToday: !t.completedToday, skippedToday: false } : t))
-    );
+    setRestTasks((prev) => {
+      const task = prev.find((t) => t.id === id);
+      if (task) {
+        const nowDone = !task.completedToday;
+        const todayStr = new Date().toDateString();
+        setHabitHistory((h) => {
+          const existing = h[id] ?? [];
+          const next = {
+            ...h,
+            [id]: nowDone ? Array.from(new Set([...existing, todayStr])) : existing.filter((d) => d !== todayStr),
+          };
+          lsSet(KEYS.habitHistory, next);
+          return next;
+        });
+      }
+      return prev.map((t) => (t.id === id ? { ...t, completedToday: !t.completedToday, skippedToday: false } : t));
+    });
   };
 
-  const addRestTask = (name: string, durationMinutes = 10) => {
+  const addRestTask = (name: string, durationMinutes = 10, color?: string, icon?: string, category?: RestCategory) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     const newTask: RestTask = {
-      id: `custom_${Date.now()}`,
+      id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       name: trimmed,
       isPreset: false,
       completedToday: false,
       durationMinutes,
-      category: "My Tasks" as RestCategory,
+      category: category ?? ("My Tasks" as RestCategory),
+      ...(color ? { color } : {}),
+      ...(icon ? { icon } : {}),
     };
     setRestTasks((prev) => [...prev, newTask]);
     const { userId: uid } = syncRef.current;
     if (uid) dbUpsertRestTask(uid, newTask);
   };
 
+  // Reorders just the tracked (non-preset) habits — Quick Rest presets are a
+  // fixed set and always render in their own section, so their relative
+  // position in this combined array doesn't affect anything on screen.
+  const reorderRestTasks = (next: RestTask[]) => {
+    setRestTasks((prev) => [...prev.filter((t) => t.isPreset), ...next]);
+  };
+
   const removeRestTask = (id: string) => {
     const task = restTasks.find((t) => t.id === id);
-    if (!task || task.isPreset) return;
+    if (!task) return;
     setRestTasks((prev) => prev.filter((t) => t.id !== id));
     const { userId: uid } = syncRef.current;
     if (uid) dbDeleteRestTask(uid, id);
@@ -557,7 +742,56 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
 
   const incrementSpinCount = useCallback(() => {
     setSpinCount((n) => n + 1);
+    setSpinsToday((n) => {
+      lsSet(KEYS.spinsToday, n + 1);
+      lsSet(KEYS.spinsTodayDate, new Date().toDateString());
+      return n + 1;
+    });
   }, []);
+
+  const registerAiUse = useCallback(() => {
+    setAiUsesToday((n) => {
+      lsSet(KEYS.aiUsesToday, n + 1);
+      lsSet(KEYS.aiUsesTodayDate, new Date().toDateString());
+      return n + 1;
+    });
+  }, []);
+
+  const registerVoiceUse = useCallback(() => {
+    setVoiceUsesThisMonth((n) => {
+      lsSet(KEYS.voiceUsesMonth, n + 1);
+      lsSet(KEYS.voiceUsesMonthKey, `${new Date().getFullYear()}-${new Date().getMonth()}`);
+      return n + 1;
+    });
+  }, []);
+
+  const registerBrainGame = useCallback(() => {
+    const now = new Date().toISOString();
+    setLastBrainGameAt(now);
+    lsSet(KEYS.lastBrainGameAt, now);
+  }, []);
+
+  const setNotifPref = useCallback((key: keyof NotifPrefs, value: boolean) => {
+    setNotifPrefs((prev) => {
+      const next = { ...prev, [key]: value };
+      lsSet(KEYS.notifPrefs, next);
+      return next;
+    });
+  }, []);
+
+  const habitStreak = useCallback((habitId: string) => {
+    const dates = new Set(habitHistory[habitId] ?? []);
+    if (dates.size === 0) return 0;
+    let count = 0;
+    const day = new Date();
+    // Today only counts if already done; otherwise start from yesterday
+    if (!dates.has(day.toDateString())) day.setDate(day.getDate() - 1);
+    while (dates.has(day.toDateString())) {
+      count++;
+      day.setDate(day.getDate() - 1);
+    }
+    return count;
+  }, [habitHistory]);
 
   // ─── Derived values ───────────────────────────────────────────────────────────
 
@@ -669,14 +903,18 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   }, [completedRestDays]);
 
   const value: AppContextType = {
-    tasks, addTask, updateTask, deleteTask,
-    completedTasks, completeTask, uncompleteTask,
-    pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, tickPomodoro,
+    tasks, seedTasks, addTask, updateTask, deleteTask,
+    completedTasks, completeTask, uncompleteTask, reorderTasks,
+    pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, cancelPomodoro, tickPomodoro,
+    resumedSession, consumeResumedSession,
     dailyGoal, setDailyGoal,
     defaultTimerMinutes, setDefaultTimerMinutes,
     categories, addCategory, removeCategory,
     streak, bestStreak, hasActivityToday, spinCount, incrementSpinCount, achievementValues,
-    restTasks, completedRestDays, partialRestDays, toggleRestTask, addRestTask, removeRestTask,
+    spinsToday, aiUsesToday, registerAiUse, habitHistory, habitStreak, notifPrefs, setNotifPref,
+    voiceUsesThisMonth, registerVoiceUse, lastBrainGameAt, registerBrainGame,
+    cloudLoading, refreshFromCloud,
+    restTasks, completedRestDays, partialRestDays, toggleRestTask, addRestTask, removeRestTask, reorderRestTasks,
     activeRestTimer, startRestTimer, cancelRestTimer, tickRestTimer,
     todayMood, setTodayMood,
     restGoalTier, setRestGoalTier,

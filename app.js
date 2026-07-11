@@ -10,10 +10,10 @@
   const MILESTONES   = [3, 7, 14, 30, 60, 100];
 
   const WHEEL_COLORS = {
-    'warm-start':  ['#EDB590','#E59880','#9DC4BC','#F0D29D','#ADA8CC','#D4A5C8'],
-    'slow-down':   ['#C8977A','#C07868','#7AADA6','#C4A87A','#8E8AAA','#A882A4'],
-    'light-a11y':  ['#C8640A','#B84A30','#2A8C82','#B89000','#5A5498','#A03882'],
-    'dark-a11y':   ['#F5C4A0','#F0A898','#B4E0D8','#F5DFA0','#C8C4E8','#E8BCD8'],
+    'warm-start':  ['#EDB590','#E59880','#9DC4BC','#F0D29D','#ADA8CC','#D4A5C8','#BCD4A5','#EDBDAC'],
+    'slow-down':   ['#C8977A','#C07868','#7AADA6','#C4A87A','#8E8AAA','#A882A4','#98B888','#C8A098'],
+    'light-a11y':  ['#C8640A','#B84A30','#2A8C82','#B89000','#5A5498','#A03882','#3A7230','#943060'],
+    'dark-a11y':   ['#F5C4A0','#F0A898','#B4E0D8','#F5DFA0','#C8C4E8','#E8BCD8','#A8D898','#F0C8D0'],
   };
 
   const THEMES = {

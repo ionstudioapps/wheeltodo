@@ -1,91 +1,88 @@
 "use client";
 
-import { useState } from "react";
-import { RotateCcw, Timer, Moon, ChevronRight } from "lucide-react";
+import { useApp } from "@/context/AppContext";
+import { TUTORIAL_TASKS } from "@/lib/tutorial";
+import { SpinPill, SectionLabel, WheelMark, TaskWheel } from "@/components/ui/kit";
 
-const STEPS = [
-  {
-    Icon: RotateCcw,
-    colorVar: "var(--accent)",
-    title: "Add tasks to your wheel",
-    body: "Head to the Tasks tab and add the things you need to get done. Each task goes on the wheel.",
-  },
-  {
-    Icon: Timer,
-    colorVar: "var(--wheel-1)",
-    title: "Spin to stay focused",
-    body: "Hit Spin and the wheel picks a task for you. Start a focus session to track your time and build your streak.",
-  },
-  {
-    Icon: Moon,
-    colorVar: "var(--wheel-5)",
-    title: "Rest days count too",
-    body: "Switch to Rest Mode on days you need a break. Completing rest activities protects your streak so momentum never breaks.",
-  },
-];
+/* First-run welcome — the tutorial IS five pre-loaded tasks that teach by doing. */
 
-interface OnboardingProps {
-  onDone: () => void;
-}
+export function Onboarding({ onDone }: { onDone: () => void }) {
+  const { seedTasks } = useApp();
 
-export function Onboarding({ onDone }: OnboardingProps) {
-  const [step, setStep] = useState(0);
-  const current = STEPS[step];
-  const isLast = step === STEPS.length - 1;
+  function begin() {
+    seedTasks(TUTORIAL_TASKS.map(({ id, name, minutes, color, icon }) => ({ id, name, minutes, color, icon, category: icon })));
+    onDone();
+  }
+
+  function skip() {
+    onDone();
+  }
+
+  const taskList = (
+    <div style={{ width: "100%", background: "var(--bg-card)", borderRadius: 20, padding: "14px 16px", boxShadow: "var(--shadow-card)" }}>
+      <SectionLabel style={{ margin: "0 0 11px 2px", fontSize: 11 }}>Start here · 5 tasks</SectionLabel>
+      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        {TUTORIAL_TASKS.map((t) => (
+          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 26, height: 26, borderRadius: 999, background: t.color, color: "var(--bg-card)", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>
+              {t.step}
+            </span>
+            <span style={{ flex: 1, fontSize: 14, fontWeight: 400, color: "var(--text-primary)" }}>{t.name}</span>
+            <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", flexShrink: 0 }}>{t.feature}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[70] flex items-end md:items-center justify-center p-4">
-      <div
-        className="w-full max-w-sm rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center gap-5"
-        style={{ background: 'var(--bg-card)' }}
-      >
-        {/* Icon */}
-        <div
-          className="w-16 h-16 rounded-2xl flex items-center justify-center"
-          style={{ backgroundColor: `color-mix(in srgb, ${current.colorVar} 15%, transparent)` }}
-        >
-          <current.Icon size={32} strokeWidth={1.8} style={{ color: current.colorVar }} />
-        </div>
+    <div style={{ position: "fixed", inset: 0, zIndex: 80, background: "var(--bg-screen)", overflowY: "auto" }}>
 
-        {/* Text */}
-        <div className="space-y-2">
-          <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{current.title}</h2>
-          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>{current.body}</p>
+      {/* ── Mobile ── */}
+      <div className="wt-mobile-only wt-screen" style={{ minHeight: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 26px 48px" }}>
+        <div style={{ marginBottom: 22 }}>
+          <WheelMark size={78} spin />
         </div>
+        <p style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 300, color: "var(--text-secondary)" }}>Hello.</p>
+        <p className="script" style={{ margin: "0 0 26px", fontFamily: "var(--font-display)", fontSize: 62, lineHeight: 0.88, color: "var(--text-primary)" }}>
+          Welcome<span style={{ color: "var(--accent)" }}>.</span>
+        </p>
+        <div style={{ marginBottom: 20, width: "100%" }}>{taskList}</div>
+        <SpinPill full onClick={begin}>Spin to begin</SpinPill>
+        <button onClick={skip} style={{ marginTop: 12, background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 300, color: "var(--text-muted)", padding: 6 }}>
+          Skip — I&apos;ll add my own tasks
+        </button>
+      </div>
 
-        {/* Step dots */}
-        <div className="flex gap-2">
-          {STEPS.map((_, i) => (
-            <div
-              key={i}
-              className="h-1.5 rounded-full transition-all"
-              style={{
-                width: i === step ? 24 : 8,
-                background: i === step ? 'var(--text-primary)' : 'var(--border)',
-              }}
-            />
-          ))}
+      {/* ── Desktop split ── */}
+      <div className="wt-desktop-only wt-screen" style={{ display: "flex", minHeight: "100%" }}>
+        <div style={{ flex: "0 0 46%", background: "var(--accent-soft)", padding: "52px 56px", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 40 }}>
+            <WheelMark size={32} />
+            <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text-primary)" }}>WheelToDo</span>
+          </div>
+          <p style={{ margin: "0 0 5px", fontSize: 16, fontWeight: 300, color: "var(--text-secondary)" }}>Hello.</p>
+          <p className="script" style={{ margin: "0 0 22px", fontFamily: "var(--font-display)", fontSize: 72, lineHeight: 0.88, color: "var(--text-primary)" }}>
+            Welcome<span style={{ color: "var(--accent)" }}>.</span>
+          </p>
+          <p style={{ margin: 0, maxWidth: 340, fontSize: 15.5, fontWeight: 300, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+            We&apos;ve loaded 5 tasks to show you around. Each one teaches a feature. Spin when you&apos;re ready.
+          </p>
+          <div style={{ position: "absolute", right: -80, bottom: -80, opacity: 0.72, pointerEvents: "none" }}>
+            <TaskWheel size={280} slices={TUTORIAL_TASKS.map((t) => ({ id: t.id, color: t.color, label: String(t.step) }))} />
+          </div>
         </div>
-
-        {/* Actions */}
-        <div className="w-full flex flex-col gap-2">
-          <button
-            onClick={() => (isLast ? onDone() : setStep((s) => s + 1))}
-            className="w-full text-white font-semibold text-base rounded-full py-3.5 active:scale-[0.98] transition flex items-center justify-center gap-2"
-            style={{ background: 'var(--text-primary)' }}
-          >
-            {isLast ? "Get started" : "Next"}
-            {!isLast && <ChevronRight size={16} strokeWidth={2.5} />}
-          </button>
-          {!isLast && (
-            <button
-              onClick={onDone}
-              className="text-sm py-2 transition"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              Skip
-            </button>
-          )}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 52 }}>
+          <div style={{ width: "100%", maxWidth: 380 }}>
+            {taskList}
+            <div style={{ height: 26 }} />
+            <SpinPill full onClick={begin}>Spin to begin</SpinPill>
+            <p style={{ marginTop: 13, textAlign: "center" }}>
+              <button onClick={skip} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 300, color: "var(--text-muted)", padding: 4 }}>
+                Skip — I&apos;ll add my own tasks
+              </button>
+            </p>
+          </div>
         </div>
       </div>
     </div>
