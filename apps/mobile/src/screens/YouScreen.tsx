@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Bell, Calendar, Check, Crosshair, Flame, LogOut } from 'lucide-react-native';
+import { Bell, Calendar, Check, Crosshair, Flame, LogOut, Sparkles } from 'lucide-react-native';
 import { THEMES, type ThemeName } from '@todo/shared/themes';
 import { useApp, type NotifPrefs } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
@@ -104,7 +104,7 @@ export function YouScreen() {
   const t = useTokens();
   const {
     user, logout, streak, completedTasks, theme, setTheme,
-    notifPrefs, setNotifPref, isPremium, activatePremium,
+    notifPrefs, setNotifPref, isPremium, activatePremium, resetOnboarding,
   } = useApp();
 
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -227,6 +227,12 @@ export function YouScreen() {
             <SpinPill full small onPress={() => setUpgradeOpen(true)}>More with Bloom</SpinPill>
           )}
         </View>
+
+        {/* Replay the first-run walkthrough */}
+        <Pressable onPress={resetOnboarding} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, marginBottom: 18 }}>
+          <Sparkles size={15} color={t.colors.text.secondary} strokeWidth={2} />
+          <Text style={{ fontFamily: FONTS.sans, fontSize: 14, color: t.colors.text.secondary }}>Replay the tour</Text>
+        </Pressable>
 
         {/* Account */}
         <SectionLabel style={{ marginBottom: 14 }}>Account</SectionLabel>

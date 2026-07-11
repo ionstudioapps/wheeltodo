@@ -1,88 +1,127 @@
 "use client";
 
-import { useApp } from "@/context/AppContext";
-import { TUTORIAL_TASKS } from "@/lib/tutorial";
-import { SpinPill, SectionLabel, WheelMark, TaskWheel } from "@/components/ui/kit";
+import { useState } from "react";
+import { SpinPill, WheelMark, TaskWheel, Ring } from "@/components/ui/kit";
 
-/* First-run welcome — the tutorial IS five pre-loaded tasks that teach by doing. */
+/* First-run walkthrough — a short sequence of full-screen pages that explain
+   the idea (the wheel decides, out of order is fine, baby steps count), then
+   hand off to an empty app ready for the user's own tasks. */
+
+interface Page {
+  lead: string;
+  script: string;
+  body: string;
+  visual: "mark" | "wheel" | "ring" | "dots";
+}
+
+const PAGES: Page[] = [
+  {
+    lead: "Hello.",
+    script: "Welcome",
+    body: "WheelToDo is a to-do list with one twist: when you can't choose what to do next, you don't have to.",
+    visual: "mark",
+  },
+  {
+    lead: "Your tasks live on a wheel.",
+    script: "Spin",
+    body: "Spin it and do whatever it lands on. Out of order is fine — that's the point. When every task feels equally heavy, letting the wheel pick beats not starting at all.",
+    visual: "wheel",
+  },
+  {
+    lead: "One task. One timer.",
+    script: "Focus",
+    body: "Every spin flows into a focus block, with everything else tucked away. Baby steps count — a short session still moves you forward.",
+    visual: "ring",
+  },
+  {
+    lead: "Small and daily.",
+    script: "Show up",
+    body: "Track a few tiny habits alongside your tasks. Rest counts too — a quick walk or a coffee keeps your streak alive on the heavy days.",
+    visual: "dots",
+  },
+  {
+    lead: "The wheel starts empty.",
+    script: "Your turn",
+    body: "Add whatever's on your mind — one task is enough to spin. The wheel takes it from there.",
+    visual: "mark",
+  },
+];
+
+const DEMO_SLICES = [1, 2, 3, 4, 5].map((n) => ({ id: `demo_${n}`, color: `var(--wheel-${n})` }));
+
+function PageVisual({ kind }: { kind: Page["visual"] }) {
+  switch (kind) {
+    case "wheel":
+      return <TaskWheel size={170} slices={DEMO_SLICES} />;
+    case "ring":
+      return (
+        <Ring progress={0.35} size={150} stroke={11}>
+          <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 30, fontWeight: 300, color: "var(--text-primary)" }}>16:12</span>
+        </Ring>
+      );
+    case "dots":
+      return (
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {[1, 1, 1, 0, 1, 0, 0].map((f, i) => (
+            <span key={i} style={{
+              width: 22, height: 22, borderRadius: 999,
+              background: f ? `var(--wheel-${(i % 6) + 1})` : "transparent",
+              boxShadow: f ? "none" : "inset 0 0 0 2px var(--border-hairline)",
+            }} />
+          ))}
+        </div>
+      );
+    default:
+      return <WheelMark size={86} spin />;
+  }
+}
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
-  const { seedTasks } = useApp();
-
-  function begin() {
-    seedTasks(TUTORIAL_TASKS.map(({ id, name, minutes, color, icon }) => ({ id, name, minutes, color, icon, category: icon })));
-    onDone();
-  }
-
-  function skip() {
-    onDone();
-  }
-
-  const taskList = (
-    <div style={{ width: "100%", background: "var(--bg-card)", borderRadius: 20, padding: "14px 16px", boxShadow: "var(--shadow-card)" }}>
-      <SectionLabel style={{ margin: "0 0 11px 2px", fontSize: 11 }}>Start here · 5 tasks</SectionLabel>
-      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-        {TUTORIAL_TASKS.map((t) => (
-          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ width: 26, height: 26, borderRadius: 999, background: t.color, color: "var(--bg-card)", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>
-              {t.step}
-            </span>
-            <span style={{ flex: 1, fontSize: 14, fontWeight: 400, color: "var(--text-primary)" }}>{t.name}</span>
-            <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", flexShrink: 0 }}>{t.feature}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  const [page, setPage] = useState(0);
+  const p = PAGES[page];
+  const last = page === PAGES.length - 1;
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 80, background: "var(--bg-screen)", overflowY: "auto" }}>
+      <div className="wt-screen" style={{ minHeight: "100%", maxWidth: 460, margin: "0 auto", display: "flex", flexDirection: "column", padding: "24px 28px 44px" }}>
 
-      {/* ── Mobile ── */}
-      <div className="wt-mobile-only wt-screen" style={{ minHeight: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 26px 48px" }}>
-        <div style={{ marginBottom: 22 }}>
-          <WheelMark size={78} spin />
+        {/* Skip */}
+        <div style={{ display: "flex", justifyContent: "flex-end", minHeight: 36 }}>
+          {!last && (
+            <button onClick={onDone} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 300, color: "var(--text-muted)", padding: 8 }}>
+              Skip
+            </button>
+          )}
         </div>
-        <p style={{ margin: "0 0 3px", fontSize: 15, fontWeight: 300, color: "var(--text-secondary)" }}>Hello.</p>
-        <p className="script" style={{ margin: "0 0 26px", fontFamily: "var(--font-display)", fontSize: 62, lineHeight: 0.88, color: "var(--text-primary)" }}>
-          Welcome<span style={{ color: "var(--accent)" }}>.</span>
-        </p>
-        <div style={{ marginBottom: 20, width: "100%" }}>{taskList}</div>
-        <SpinPill full onClick={begin}>Spin to begin</SpinPill>
-        <button onClick={skip} style={{ marginTop: 12, background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 300, color: "var(--text-muted)", padding: 6 }}>
-          Skip — I&apos;ll add my own tasks
-        </button>
-      </div>
 
-      {/* ── Desktop split ── */}
-      <div className="wt-desktop-only wt-screen" style={{ display: "flex", minHeight: "100%" }}>
-        <div style={{ flex: "0 0 46%", background: "var(--accent-soft)", padding: "52px 56px", display: "flex", flexDirection: "column", justifyContent: "center", position: "relative", overflow: "hidden" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 40 }}>
-            <WheelMark size={32} />
-            <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text-primary)" }}>WheelToDo</span>
+        {/* Page content — keyed so each page animates in */}
+        <div key={page} className="wt-screen" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 0 }}>
+          <div style={{ height: 190, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 26 }}>
+            <PageVisual kind={p.visual} />
           </div>
-          <p style={{ margin: "0 0 5px", fontSize: 16, fontWeight: 300, color: "var(--text-secondary)" }}>Hello.</p>
-          <p className="script" style={{ margin: "0 0 22px", fontFamily: "var(--font-display)", fontSize: 72, lineHeight: 0.88, color: "var(--text-primary)" }}>
-            Welcome<span style={{ color: "var(--accent)" }}>.</span>
+          <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 300, color: "var(--text-secondary)" }}>{p.lead}</p>
+          <p className="script" style={{ margin: "0 0 18px", fontFamily: "var(--font-display)", fontSize: 58, lineHeight: 0.95, color: "var(--text-primary)" }}>
+            {p.script}<span style={{ color: "var(--accent)" }}>.</span>
           </p>
-          <p style={{ margin: 0, maxWidth: 340, fontSize: 15.5, fontWeight: 300, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-            We&apos;ve loaded 5 tasks to show you around. Each one teaches a feature. Spin when you&apos;re ready.
+          <p style={{ margin: 0, maxWidth: 330, fontSize: 15, fontWeight: 300, color: "var(--text-secondary)", lineHeight: 1.65 }}>
+            {p.body}
           </p>
-          <div style={{ position: "absolute", right: -80, bottom: -80, opacity: 0.72, pointerEvents: "none" }}>
-            <TaskWheel size={280} slices={TUTORIAL_TASKS.map((t) => ({ id: t.id, color: t.color, label: String(t.step) }))} />
-          </div>
         </div>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 52 }}>
-          <div style={{ width: "100%", maxWidth: 380 }}>
-            {taskList}
-            <div style={{ height: 26 }} />
-            <SpinPill full onClick={begin}>Spin to begin</SpinPill>
-            <p style={{ marginTop: 13, textAlign: "center" }}>
-              <button onClick={skip} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 300, color: "var(--text-muted)", padding: 4 }}>
-                Skip — I&apos;ll add my own tasks
-              </button>
-            </p>
+
+        {/* Dots + CTA */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 22, alignItems: "center", paddingTop: 26 }}>
+          <div style={{ display: "flex", gap: 7 }}>
+            {PAGES.map((_, i) => (
+              <button key={i} onClick={() => setPage(i)} aria-label={`Page ${i + 1}`} style={{
+                width: i === page ? 22 : 8, height: 8, borderRadius: 999, border: "none", padding: 0, cursor: "pointer",
+                background: i === page ? "var(--accent)" : "var(--bg-sunk)",
+                transition: "all 220ms var(--ease-out)",
+              }} />
+            ))}
           </div>
+          <SpinPill full onClick={() => (last ? onDone() : setPage(page + 1))}>
+            {last ? "Add my first task" : "Next"}
+          </SpinPill>
         </div>
       </div>
     </div>

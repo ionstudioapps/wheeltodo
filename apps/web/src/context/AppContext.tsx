@@ -116,20 +116,14 @@ export interface NotifPrefs {
 
 const DEFAULT_CATEGORIES = ["Work", "Personal", "Learning", "Health"];
 
-const defaultTasks: Task[] = [
-  { id: "1", name: "Write blog post",  minutes: 25, color: "#E59880", icon: "PenLine"  },
-  { id: "2", name: "Review code",      minutes: 15, color: "#EDB590", icon: "Code"     },
-  { id: "3", name: "Design mockups",   minutes: 30, color: "#9DC4BC", icon: "Palette"  },
-  { id: "4", name: "Team meeting",     minutes: 20, color: "#F0D29D", icon: "Users"    },
-  { id: "5", name: "Email replies",    minutes: 10, color: "#ADA8CC", icon: "Mail"     },
-  { id: "6", name: "Research",         minutes: 25, color: "#D4A5C8", icon: "BookOpen" },
-];
+// New installs start with an empty wheel — the walkthrough hands off to the
+// "Add your first task" empty state rather than seeding demo tasks.
+const defaultTasks: Task[] = [];
 
 // ─── Context type ─────────────────────────────────────────────────────────────
 
 interface AppContextType {
   tasks: Task[];
-  seedTasks: (tasks: Task[]) => void;
   addTask: (task: Omit<Task, "id">) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
@@ -211,6 +205,7 @@ interface AppContextType {
 
   hasSeenOnboarding: boolean;
   markOnboardingSeen: () => void;
+  resetOnboarding: () => void;
 
   isPremium: boolean;
   activatePremium: () => Promise<void>;
@@ -457,13 +452,6 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   }, [dailyGoal, defaultTimerMinutes, restGoalTier, loaded, userId]);
 
   // ─── Task actions ────────────────────────────────────────────────────────────
-
-  // Replace the task list wholesale (used by the tutorial to pre-load its 5 tasks)
-  const seedTasks = (seeded: Task[]) => {
-    setTasks(seeded);
-    const { userId: uid } = syncRef.current;
-    if (uid) seeded.forEach((t, i) => dbUpsertTask(uid, t, i));
-  };
 
   const addTask = (task: Omit<Task, "id">) => {
     const newTask = { ...task, id: Date.now().toString() };
@@ -719,6 +707,8 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const setDailyGoal = (goal: number) => setDailyGoalState(goal);
   const setDefaultTimerMinutes = (m: number) => setDefaultTimerMinutesState(m);
   const markOnboardingSeen = useCallback(() => setHasSeenOnboarding(true), []);
+  // Replay the first-run walkthrough (You tab → "Replay the tour")
+  const resetOnboarding = useCallback(() => setHasSeenOnboarding(false), []);
 
   const activatePremium = useCallback(async () => {
     setIsPremium(true);
@@ -903,7 +893,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   }, [completedRestDays]);
 
   const value: AppContextType = {
-    tasks, seedTasks, addTask, updateTask, deleteTask,
+    tasks, addTask, updateTask, deleteTask,
     completedTasks, completeTask, uncompleteTask, reorderTasks,
     pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, cancelPomodoro, tickPomodoro,
     resumedSession, consumeResumedSession,
@@ -920,7 +910,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     restGoalTier, setRestGoalTier,
     restMinutesToday, restGoalMinutes,
     restStreak, bestRestStreak,
-    hasSeenOnboarding, markOnboardingSeen,
+    hasSeenOnboarding, markOnboardingSeen, resetOnboarding,
     isPremium, activatePremium,
     theme, setTheme,
   };

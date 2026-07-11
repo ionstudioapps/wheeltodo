@@ -165,13 +165,13 @@ interface AppContextType {
 
   hasSeenOnboarding: boolean;
   markOnboardingSeen: () => void;
+  resetOnboarding: () => void;
 
   // ── Design-port additions (parity with apps/web) ──
   theme: ThemeName;
   setTheme: (t: ThemeName) => void;
   isPremium: boolean;
   activatePremium: () => void;
-  seedTasks: (tasks: Task[]) => void;
   cancelPomodoro: () => void;
   spinsToday: number;
   aiUsesToday: number;
@@ -240,14 +240,9 @@ export const COLORS = [
   '#EDB590', '#E59880', '#9DC4BC', '#F0D29D', '#ADA8CC', '#D4A5C8', '#BCD4A5', '#EDBDAC',
 ];
 
-const defaultTasks: Task[] = [
-  { id: '1', name: 'Write blog post',  minutes: 25, color: '#E59880', icon: 'PenLine'   },
-  { id: '2', name: 'Review code',      minutes: 15, color: '#EDB590', icon: 'Code'      },
-  { id: '3', name: 'Design mockups',   minutes: 30, color: '#9DC4BC', icon: 'Palette'   },
-  { id: '4', name: 'Team meeting',     minutes: 20, color: '#F0D29D', icon: 'Users'     },
-  { id: '5', name: 'Email replies',    minutes: 10, color: '#ADA8CC', icon: 'Mail'      },
-  { id: '6', name: 'Research',         minutes: 25, color: '#D4A5C8', icon: 'BookOpen'  },
-];
+// New installs start with an empty wheel — the walkthrough hands off to the
+// "Add your first task" empty state rather than seeding demo tasks.
+const defaultTasks: Task[] = [];
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
@@ -911,12 +906,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEYS.isPremium, JSON.stringify(true)).catch(() => {});
   }, []);
 
-  const seedTasks = useCallback((seeded: Task[]) => {
-    setTasks(seeded);
-    const { userId: uid } = syncRef.current;
-    if (uid) seeded.forEach((t, i) => dbUpsertTask(uid, t, i));
-  }, []);
-
   const registerAiUse = useCallback(() => {
     setAiUsesToday((n) => {
       AsyncStorage.multiSet([
@@ -1110,8 +1099,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     restGoalTier, setRestGoalTier,
     restMinutesToday, restGoalMinutes,
     restStreak, bestRestStreak,
-    hasSeenOnboarding, markOnboardingSeen: () => setHasSeenOnboarding(true),
-    theme, setTheme, isPremium, activatePremium, seedTasks, cancelPomodoro,
+    hasSeenOnboarding,
+    markOnboardingSeen: () => setHasSeenOnboarding(true),
+    resetOnboarding: () => setHasSeenOnboarding(false),
+    theme, setTheme, isPremium, activatePremium, cancelPomodoro,
     spinsToday, aiUsesToday, registerAiUse,
     voiceUsesThisMonth, registerVoiceUse,
     lastBrainGameAt, registerBrainGame,

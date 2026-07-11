@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { useApp, COLORS, FREE_LIMITS, type Task } from "@/context/AppContext";
 import { useSubscription } from "@/hooks/useSubscription";
 import { fnUrl, fnHeaders } from "@/lib/functions";
-import { TUTORIAL_TASKS, isTutorialTask, tutorialStepFor } from "@/lib/tutorial";
 import {
   WIcon, Headline, SpinPill, Sheet, SectionLabel, TaskWheel, WheelHub,
   ConfettiBurst, TASK_ICON_PATHS, TASK_CATEGORIES, formatMmSs,
@@ -155,8 +154,6 @@ function TaskRow({ task, dim, displayTime, dragging, dropTarget, onComplete, onD
   task: Task; dim?: boolean; displayTime?: string; dragging?: boolean; dropTarget?: boolean;
   onComplete: () => void; onDelete: () => void; onEdit: () => void; onGripPointerDown?: (e: React.PointerEvent) => void;
 }) {
-  const tut = isTutorialTask(task.id) ? tutorialStepFor(task.id) : undefined;
-
   return (
     <div onClick={onEdit} style={{
       display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
@@ -166,33 +163,20 @@ function TaskRow({ task, dim, displayTime, dragging, dropTarget, onComplete, onD
       opacity: dragging ? 0.5 : 1,
       borderTop: dropTarget ? "2px solid var(--accent)" : "2px solid transparent",
     }}>
-      {!tut && (
-        <span
-          onPointerDown={onGripPointerDown}
-          onClick={(e) => e.stopPropagation()}
-          style={{ cursor: onGripPointerDown ? "grab" : "default", touchAction: "none", color: "var(--text-muted)", flexShrink: 0, display: "flex" }}
-        >
-          <WIcon name="grip" size={16} stroke={1.6} />
-        </span>
-      )}
-      {tut ? (
-        <span style={{ width: 38, height: 38, borderRadius: 999, background: task.color, color: "var(--bg-card)", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700 }}>
-          {tut.step}
-        </span>
-      ) : (
-        <TaskAvatar task={task} />
-      )}
+      <span
+        onPointerDown={onGripPointerDown}
+        onClick={(e) => e.stopPropagation()}
+        style={{ cursor: onGripPointerDown ? "grab" : "default", touchAction: "none", color: "var(--text-muted)", flexShrink: 0, display: "flex" }}
+      >
+        <WIcon name="grip" size={16} stroke={1.6} />
+      </span>
+      <TaskAvatar task={task} />
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "block", fontSize: 16, fontWeight: 500, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{task.name}</span>
         <span style={{ display: "block", fontSize: 13, fontWeight: 300, color: "var(--text-secondary)", marginTop: 1 }}>
-          {tut ? `${task.minutes > 0 ? `${task.minutes} min · ` : ""}${tut.feature}` : (displayTime ?? `${task.minutes} min`)}
+          {displayTime ?? `${task.minutes} min`}
         </span>
       </span>
-      {tut && (
-        <span style={{ display: "inline-flex", padding: "3px 9px", borderRadius: 999, flexShrink: 0, background: "var(--c-coral-soft)", fontSize: 11, fontWeight: 600, color: "var(--accent)" }}>
-          {tut.feature}
-        </span>
-      )}
       <button onClick={(e) => { e.stopPropagation(); onDelete(); }} aria-label="Delete task" style={{ border: "none", background: "none", cursor: "pointer", padding: 4, color: "var(--text-muted)", flexShrink: 0 }}>
         <WIcon name="trash" size={16} stroke={1.8} />
       </button>
@@ -601,12 +585,6 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
     return d.getTime() === today.getTime();
   });
 
-  // Tutorial state
-  const tutTasks = tasks.filter((t) => isTutorialTask(t.id));
-  const tutDone = new Set(completedTasks.filter((t) => isTutorialTask(t.taskId)).map((t) => t.taskId)).size;
-  const tutActive = tutTasks.length > 0;
-  const allTutDone = tutDone >= TUTORIAL_TASKS.length;
-
   // Seed cap: 8 active tasks on the wheel. Returns how many more can be added.
   const taskSlotsLeft = isPremium ? Infinity : Math.max(0, FREE_LIMITS.tasksOnWheel - tasks.length);
 
@@ -681,7 +659,6 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
   }));
 
   const wheelSize = 300;
-  const pickedTut = picked && isTutorialTask(picked.id) ? tutorialStepFor(picked.id) : undefined;
 
   const wheel = (size: number) => (
     <TaskWheel
@@ -695,7 +672,7 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
     ? null
     : (
       <SpinPill onClick={spinWheel} disabled={spinning || (!isPremium && spinsLeft === 0)}>
-        {spinning ? "Spinning…" : !isPremium && spinsLeft === 0 ? "All done for today" : tutActive && tutDone === 0 ? "Spin to begin" : "Spin the wheel"}
+        {spinning ? "Spinning…" : !isPremium && spinsLeft === 0 ? "All done for today" : "Spin the wheel"}
       </SpinPill>
     );
 
@@ -729,10 +706,8 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
         <div className="wt-tasks-main">
           {/* Headline */}
           <div style={{ paddingTop: 10 }}>
-            {allTutDone && tutTasks.length === 0 && todayCompleted.length > 0 ? (
+            {todayCompleted.length > 0 && tasks.length === 0 ? (
               <Headline lead="Done. On to the next." script="Nice work" size={50} />
-            ) : tutActive ? (
-              <Headline lead="Your first spin." script="Begin" size={56} />
             ) : (
               <Headline lead="Not sure where to start?" script="Spin" size={58} />
             )}
@@ -756,31 +731,6 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
               <button onClick={dismissRecapPrompt} aria-label="Dismiss" style={{ background: "none", border: "none", cursor: "pointer", padding: 6, color: "var(--text-muted)", display: "flex" }}>
                 <WIcon name="x" size={16} />
               </button>
-            </div>
-          )}
-
-          {/* Tutorial banner + progress */}
-          {tutActive && (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ background: "var(--bg-card)", borderRadius: 20, padding: "14px 16px", boxShadow: "var(--shadow-card)", display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                <span style={{ width: 38, height: 38, borderRadius: 999, flexShrink: 0, background: "var(--c-coral-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <WIcon name="sparkle" size={18} color="var(--accent)" />
-                </span>
-                <span>
-                  <span style={{ display: "block", fontSize: 14.5, fontWeight: 600, color: "var(--text-primary)" }}>Start here.</span>
-                  <span style={{ display: "block", fontSize: 13, fontWeight: 300, color: "var(--text-secondary)", marginTop: 2, lineHeight: 1.4 }}>
-                    Five tasks. Five features. Spin to begin.
-                  </span>
-                </span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 2px" }}>
-                <div style={{ flex: 1, height: 4, borderRadius: 99, background: "var(--bg-sunk)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${(tutDone / TUTORIAL_TASKS.length) * 100}%`, background: "var(--accent)", borderRadius: 99 }} />
-                </div>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", flexShrink: 0, letterSpacing: "0.04em" }}>
-                  {tutDone} / {TUTORIAL_TASKS.length}
-                </span>
-              </div>
             </div>
           )}
 
@@ -936,25 +886,14 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
       {picked && !spinning && (
         <Sheet onClose={() => setPicked(null)}>
           <div style={{ display: "flex", alignItems: "center", gap: 13, marginBottom: 14 }}>
-            {pickedTut ? (
-              <span style={{ width: 46, height: 46, borderRadius: 999, background: picked.color, color: "var(--bg-card)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, flexShrink: 0 }}>{pickedTut.step}</span>
-            ) : (
-              <TaskAvatar task={picked} size={46} />
-            )}
+            <TaskAvatar task={picked} size={46} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 18, fontWeight: 600, color: "var(--text-primary)", overflowWrap: "anywhere" }}>{picked.name}</div>
-              <div style={{ fontSize: 13, fontWeight: pickedTut ? 500 : 300, color: pickedTut ? "var(--accent)" : "var(--text-secondary)", marginTop: 1 }}>
-                {pickedTut ? `${pickedTut.feature} · step ${pickedTut.step} of 5` : `${picked.minutes} min focus block`}
+              <div style={{ fontSize: 13, fontWeight: 300, color: "var(--text-secondary)", marginTop: 1 }}>
+                {picked.minutes} min focus block
               </div>
             </div>
           </div>
-          {pickedTut?.step === 1 && (
-            <div style={{ background: "var(--c-coral-soft)", borderRadius: 14, padding: "11px 14px", marginBottom: 16 }}>
-              <div style={{ fontSize: 13.5, color: "var(--text-primary)", lineHeight: 1.45 }}>
-                You just used the wheel. It picked for you — that&apos;s the whole idea.
-              </div>
-            </div>
-          )}
           <SpinPill full onClick={() => handleStartFocus(picked)}>
             {picked.minutes === 0 ? "Mark done · no focus needed" : <>Start focus<WIcon name="arrowR" size={19} /></>}
           </SpinPill>

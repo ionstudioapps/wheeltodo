@@ -18,7 +18,6 @@ import { WeeklyRecap } from '../components/WeeklyRecap';
 import { BrainStarter } from '../components/BrainStarter';
 import { BloomChip, BloomNudge, UpgradeScreen } from '../components/Upgrade';
 import { Toast, useToast } from '../components/Toast';
-import { TUTORIAL_TASKS, isTutorialTask, tutorialStepFor } from '../utils/tutorial';
 import { fnUrl, fnHeaders } from '../utils/functions';
 
 interface Suggestion { name: string; minutes: number; category?: string }
@@ -29,16 +28,13 @@ const RECAP_PROMPT_KEY = 'wheelTodo.recapPromptDismissed';
 
 function TaskAvatar({ task, size = 38 }: { task: Task; size?: number }) {
   const t = useTokens();
-  const tut = isTutorialTask(task.id) ? tutorialStepFor(task.id) : undefined;
   const hasIcon = task.icon && TASK_ICON_PATHS[task.icon];
   return (
     <View style={{
       width: size, height: size, borderRadius: 999, backgroundColor: task.color,
       alignItems: 'center', justifyContent: 'center',
     }}>
-      {tut ? (
-        <Text style={{ fontFamily: FONTS.sansBold, fontSize: size * 0.4, color: t.colors.bg.card }}>{tut.step}</Text>
-      ) : hasIcon ? (
+      {hasIcon ? (
         <CategoryIcon id={task.icon} size={size * 0.45} color={t.colors.bg.card} />
       ) : (
         <Text style={{ fontFamily: FONTS.sansSemi, fontSize: size * 0.4, color: t.colors.bg.card }}>
@@ -56,7 +52,6 @@ function TaskRow({ task, dim, remainingLabel, gripHandlers, onComplete, onDelete
   onComplete: () => void; onDelete: () => void; onEdit: () => void;
 }) {
   const t = useTokens();
-  const tut = isTutorialTask(task.id) ? tutorialStepFor(task.id) : undefined;
 
   return (
     <Pressable onPress={onEdit} style={{
@@ -76,16 +71,9 @@ function TaskRow({ task, dim, remainingLabel, gripHandlers, onComplete, onDelete
           {task.name}
         </Text>
         <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, marginTop: 1, color: t.colors.text.secondary }}>
-          {tut
-            ? `${task.minutes > 0 ? `${task.minutes} min · ` : ''}${tut.feature}`
-            : remainingLabel ?? `${task.minutes} min`}
+          {remainingLabel ?? `${task.minutes} min`}
         </Text>
       </View>
-      {tut && (
-        <View style={{ backgroundColor: t.colors.softs.coral, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}>
-          <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 11, color: t.colors.accent.main }}>{tut.feature}</Text>
-        </View>
-      )}
       <Pressable hitSlop={8} onPress={onDelete}>
         <Trash2 size={16} color={t.colors.text.muted} strokeWidth={1.8} />
       </Pressable>
@@ -421,10 +409,6 @@ export function TasksScreen() {
     });
   }, [completedTasks]);
 
-  const tutTasks = tasks.filter((task) => isTutorialTask(task.id));
-  const tutDone = new Set(completedTasks.filter((c) => isTutorialTask(c.taskId)).map((c) => c.taskId)).size;
-  const tutActive = tutTasks.length > 0;
-
   // Brain Starter: Seed 1/week · Bloom 1/day. Time-dependent by design.
   const brainAvailable = (() => {
     if (!lastBrainGameAt) return true;
@@ -547,7 +531,6 @@ export function TasksScreen() {
     iconPaths: task.icon ? TASK_ICON_PATHS[task.icon] : undefined,
   }));
 
-  const pickedTut = picked && isTutorialTask(picked.id) ? tutorialStepFor(picked.id) : undefined;
   const s = styles(t);
 
   return (
@@ -560,11 +543,7 @@ export function TasksScreen() {
       >
         {/* Headline */}
         <View style={{ paddingTop: 10 }}>
-          {tutActive ? (
-            <Headline lead="Your first spin." script="Begin" size={54} />
-          ) : (
-            <Headline lead="Not sure where to start?" script="Spin" size={56} />
-          )}
+          <Headline lead="Not sure where to start?" script="Spin" size={56} />
         </View>
 
         {/* Sunday recap prompt */}
@@ -583,27 +562,6 @@ export function TasksScreen() {
           </View>
         )}
 
-        {/* Tutorial banner + progress */}
-        {tutActive && (
-          <View style={{ marginTop: 14 }}>
-            <View style={[s.banner, cardShadow(t.dark)]}>
-              <View style={s.bannerBadge}>
-                <Sparkles size={18} color={t.colors.accent.main} strokeWidth={2} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.bannerTitle}>Start here.</Text>
-                <Text style={s.bannerSub}>Five tasks. Five features. Spin to begin.</Text>
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12, paddingHorizontal: 2 }}>
-              <View style={{ flex: 1, height: 4, borderRadius: 99, backgroundColor: t.colors.bg.sunk, overflow: 'hidden' }}>
-                <View style={{ height: '100%', width: `${(tutDone / TUTORIAL_TASKS.length) * 100}%`, backgroundColor: t.colors.accent.main, borderRadius: 99 }} />
-              </View>
-              <Text style={s.progressText}>{tutDone} / {TUTORIAL_TASKS.length}</Text>
-            </View>
-          </View>
-        )}
-
         {/* Wheel */}
         {tasks.length > 0 && (
           <View style={{ alignItems: 'center', marginTop: 18, gap: 18 }}>
@@ -613,7 +571,7 @@ export function TasksScreen() {
               onSlicePress={(sl) => { const task = tasks.find((x) => x.id === sl.id); if (task && !spinning) setPicked(task); }}
             />
             <SpinPill onPress={spinWheel} disabled={spinning || (!isPremium && spinsLeft === 0)}>
-              {spinning ? 'Spinning…' : !isPremium && spinsLeft === 0 ? 'All done for today' : tutActive && tutDone === 0 ? 'Spin to begin' : 'Spin the wheel'}
+              {spinning ? 'Spinning…' : !isPremium && spinsLeft === 0 ? 'All done for today' : 'Spin the wheel'}
             </SpinPill>
 
             {/* Seed spin dots */}
@@ -772,21 +730,11 @@ export function TasksScreen() {
             <TaskAvatar task={picked} size={46} />
             <View style={{ flex: 1 }}>
               <Text numberOfLines={2} style={{ fontFamily: FONTS.sansSemi, fontSize: 18, color: t.colors.text.primary }}>{picked.name}</Text>
-              <Text style={{
-                fontFamily: pickedTut ? FONTS.sansMedium : FONTS.sansLight, fontSize: 13, marginTop: 1,
-                color: pickedTut ? t.colors.accent.main : t.colors.text.secondary,
-              }}>
-                {pickedTut ? `${pickedTut.feature} · step ${pickedTut.step} of 5` : `${picked.minutes} min focus block`}
+              <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, marginTop: 1, color: t.colors.text.secondary }}>
+                {picked.minutes} min focus block
               </Text>
             </View>
           </View>
-          {pickedTut?.step === 1 && (
-            <View style={{ backgroundColor: t.colors.softs.coral, borderRadius: 14, padding: 12, marginBottom: 16 }}>
-              <Text style={{ fontFamily: FONTS.sans, fontSize: 13.5, lineHeight: 19, color: t.colors.text.primary }}>
-                You just used the wheel. It picked for you — that&apos;s the whole idea.
-              </Text>
-            </View>
-          )}
           <SpinPill full onPress={() => handleStartFocus(picked)}>
             {picked.minutes === 0 ? 'Mark done · no focus needed' : (
               <>
@@ -857,7 +805,6 @@ const styles = (t: ReturnType<typeof useTokens>) => StyleSheet.create({
   bannerBadge: { width: 38, height: 38, borderRadius: 999, backgroundColor: t.colors.softs.coral, alignItems: 'center', justifyContent: 'center' },
   bannerTitle: { fontFamily: FONTS.sansSemi, fontSize: 14.5, color: t.colors.text.primary },
   bannerSub: { fontFamily: FONTS.sansLight, fontSize: 13, lineHeight: 18, color: t.colors.text.secondary, marginTop: 2 },
-  progressText: { fontFamily: FONTS.sansSemi, fontSize: 12, letterSpacing: 0.5, color: t.colors.text.secondary },
   dotsWrap: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
     backgroundColor: t.colors.bg.card, borderRadius: 100, paddingHorizontal: 16, paddingVertical: 7,

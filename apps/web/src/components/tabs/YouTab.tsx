@@ -27,7 +27,7 @@ const NOTIF_ROWS: { key: keyof NotifPrefs; icon: string; chipVar: string; iconVa
 ];
 
 export function YouTab({ user, onSignOut }: YouTabProps) {
-  const { theme, setTheme, streak, completedTasks, notifPrefs, setNotifPref } = useApp();
+  const { theme, setTheme, streak, completedTasks, notifPrefs, setNotifPref, resetOnboarding } = useApp();
   const { isPremium, activate } = useSubscription();
 
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -204,6 +204,11 @@ export function YouTab({ user, onSignOut }: YouTabProps) {
 
           {/* Account */}
           {accountBlock}
+
+          <button onClick={resetOnboarding} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "var(--text-secondary)", fontSize: 14, padding: "8px 0" }}>
+            <WIcon name="sparkle" size={15} />
+            Replay the tour
+          </button>
 
           <button onClick={handleSignOut} style={{ width: "100%", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "var(--text-muted)", fontSize: 14, padding: "8px 0" }}>
             <WIcon name="logout" size={15} />
