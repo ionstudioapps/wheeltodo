@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useApp, FREE_LIMITS, type RestTask, type RestCategory } from "@/context/AppContext";
+import { useApp, COLORS, FREE_LIMITS, type RestTask, type RestCategory } from "@/context/AppContext";
 import { useSubscription } from "@/hooks/useSubscription";
-import { WIcon, Headline, SpinPill, Sheet, SectionLabel, ConfettiBurst, Ring } from "@/components/ui/kit";
+import { WIcon, Headline, SpinPill, Sheet, SectionLabel, ConfettiBurst, Ring, TASK_CATEGORIES, TASK_ICON_PATHS } from "@/components/ui/kit";
 import { UpgradeScreen, BloomNudge } from "@/components/Upgrade";
 import { Toast, useToast } from "@/components/ui/Toast";
 import { useDragReorder } from "@/hooks/useDragReorder";
@@ -78,7 +78,8 @@ function HabitRow({ habit, streakDays, week, dragging, dropTarget, onToggle, onD
   onToggle: () => void; onDelete: () => void; onGripPointerDown?: (e: React.PointerEvent) => void;
 }) {
   const done = habit.completedToday;
-  const color = `var(${categoryVar(habit.category)})`;
+  const color = habit.color ?? `var(${categoryVar(habit.category)})`;
+  const iconPaths = habit.icon ? TASK_ICON_PATHS[habit.icon] : undefined;
   const initial = habit.name.trim()[0]?.toUpperCase() ?? "?";
 
   return (
@@ -94,8 +95,12 @@ function HabitRow({ habit, streakDays, week, dragging, dropTarget, onToggle, onD
       >
         <WIcon name="grip" size={16} stroke={1.6} />
       </span>
-      <span style={{ width: 42, height: 42, borderRadius: 999, background: habit.color ?? color, color: "var(--bg-card)", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 600 }}>
-        {initial}
+      <span style={{ width: 42, height: 42, borderRadius: 999, background: color, color: "var(--bg-card)", flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 600 }}>
+        {iconPaths ? (
+          <svg width={19} height={19} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+            {iconPaths.map((d, k) => <path key={k} d={d} />)}
+          </svg>
+        ) : initial}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 16, fontWeight: 500, color: done ? "var(--text-muted)" : "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{habit.name}</div>
@@ -106,7 +111,7 @@ function HabitRow({ habit, streakDays, week, dragging, dropTarget, onToggle, onD
           {week.map((f, i) => (
             <span key={i} style={{
               width: 11, height: 11, borderRadius: 999, flexShrink: 0,
-              background: f ? (habit.color ?? color) : "transparent",
+              background: f ? color : "transparent",
               boxShadow: f ? "none" : "inset 0 0 0 1.5px var(--border-hairline)",
             }} />
           ))}
@@ -117,7 +122,7 @@ function HabitRow({ habit, streakDays, week, dragging, dropTarget, onToggle, onD
       </button>
       <button onClick={onToggle} aria-label={done ? "Mark not done" : "Mark done"} className="wt-press" style={{
         width: 30, height: 30, borderRadius: 999, flexShrink: 0, border: "none", cursor: "pointer",
-        background: done ? (habit.color ?? color) : "transparent",
+        background: done ? color : "transparent",
         boxShadow: done ? "none" : "inset 0 0 0 1.5px var(--border-hairline)",
         display: "inline-flex", alignItems: "center", justifyContent: "center",
       }}>
@@ -136,7 +141,8 @@ export function HabitsTab() {
   const [addOpen, setAddOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [name, setName] = useState("");
-  const [cat, setCat] = useState<RestCategory>("Physical");
+  const [icon, setIcon] = useState<string>("mind");
+  const [color, setColor] = useState<string>(COLORS[0]);
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
   // One-shot celebration when the final habit of the day is checked off.
   const [celebrate, setCelebrate] = useState(false);
@@ -205,9 +211,10 @@ export function HabitsTab() {
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    addRestTask(name.trim(), 10, undefined, undefined, cat);
+    addRestTask(name.trim(), 10, color, icon);
     setName("");
-    setCat("Physical");
+    setIcon("mind");
+    setColor(COLORS[0]);
     setAddOpen(false);
   }
 
@@ -335,7 +342,7 @@ export function HabitsTab() {
           <p style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 300, color: "var(--text-secondary)" }}>Small and daily beats big and rare.</p>
           <form onSubmit={handleAdd}>
             <div style={{ display: "flex", alignItems: "center", gap: 11, background: "var(--bg-input)", borderRadius: "var(--r-row)", padding: "0 16px", height: 56, boxShadow: "inset 0 0 0 2px var(--accent)" }}>
-              <span style={{ width: 30, height: 30, borderRadius: 999, background: `var(${categoryVar(cat)})`, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--bg-card)", fontSize: 13, fontWeight: 600 }}>
+              <span style={{ width: 30, height: 30, borderRadius: 999, background: color, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--bg-card)", fontSize: 13, fontWeight: 600 }}>
                 {name.trim()[0]?.toUpperCase() ?? "?"}
               </span>
               <input
@@ -344,21 +351,36 @@ export function HabitsTab() {
               />
             </div>
             <SectionLabel style={{ margin: "20px 2px 9px", fontSize: 12.5, letterSpacing: "0.04em", color: "var(--text-secondary)", textTransform: "uppercase" }}>Category</SectionLabel>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {CATEGORY_META.map((c) => {
-                const on = cat === c.id;
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 7 }}>
+              {TASK_CATEGORIES.map((ic) => {
+                const on = icon === ic.id;
                 return (
-                  <button key={c.id} type="button" onClick={() => setCat(c.id)} style={{
-                    display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 16px", borderRadius: 999,
-                    border: "none", cursor: "pointer",
-                    background: on ? "var(--ink)" : "var(--bg-input)",
-                    color: on ? "var(--text-on-ink)" : "var(--text-secondary)",
-                    fontSize: 14, fontWeight: 500, transition: "background 120ms ease",
+                  <button key={ic.id} type="button" onClick={() => setIcon(ic.id)} title={ic.label} style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: "100%", aspectRatio: "1", borderRadius: 13, border: "none", cursor: "pointer",
+                    background: on ? "var(--accent-soft)" : "var(--bg-input)",
+                    outline: on ? `1.5px solid ${color}` : "none",
+                    transition: "background 140ms ease",
                   }}>
-                    <span style={{ width: 11, height: 11, borderRadius: 999, background: `var(${c.colorVar})` }} /> {c.label}
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                      stroke={on ? color : "var(--text-secondary)"}
+                      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+                      {TASK_ICON_PATHS[ic.id].map((d, k) => <path key={k} d={d} />)}
+                    </svg>
                   </button>
                 );
               })}
+            </div>
+            <SectionLabel style={{ margin: "20px 2px 9px", fontSize: 12.5, letterSpacing: "0.04em", color: "var(--text-secondary)", textTransform: "uppercase" }}>Colour</SectionLabel>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 7 }}>
+              {COLORS.map((c) => (
+                <button key={c} type="button" onClick={() => setColor(c)} style={{
+                  width: "100%", aspectRatio: "1", borderRadius: 999, background: c, border: "none", cursor: "pointer", padding: 0,
+                  boxShadow: color === c ? `0 0 0 2.5px var(--bg-sheet), 0 0 0 4.5px ${c}` : "none",
+                  transform: color === c ? "scale(1.15)" : "scale(1)",
+                  transition: "transform 140ms ease, box-shadow 140ms ease",
+                }} />
+              ))}
             </div>
             <div style={{ marginTop: 22 }}>
               <SpinPill full type="submit">Add habit</SpinPill>

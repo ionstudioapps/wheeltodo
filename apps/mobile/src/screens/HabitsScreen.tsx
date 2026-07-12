@@ -3,9 +3,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, type GestureResponderHandlers, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Check, GripVertical, Plus, Trash2 } from 'lucide-react-native';
 import { useDragReorder } from '../hooks/useDragReorder';
-import { useApp, FREE_LIMITS, type RestCategory, type RestTask } from '../context/AppContext';
+import { useApp, COLORS, FREE_LIMITS, type RestCategory, type RestTask } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
-import { ConfettiBurst, Headline, Ring, SectionLabel, Sheet, SpinPill, cardShadow, useTokens } from '../components/kit';
+import {
+  CategoryIcon, ConfettiBurst, Headline, Ring, SectionLabel, Sheet, SpinPill,
+  TASK_CATEGORIES, TASK_ICON_PATHS, cardShadow, useTokens,
+} from '../components/kit';
 import { BloomChip, BloomNudge, UpgradeScreen } from '../components/Upgrade';
 import { Toast, useToast } from '../components/Toast';
 import { SkeletonRows } from '../components/Skeleton';
@@ -17,13 +20,6 @@ const STARTERS: { name: string; mins: number; cat: RestCategory }[] = [
   { name: 'Stretch', mins: 10, cat: 'Physical' },
   { name: 'Read a book', mins: 15, cat: 'Mental' },
   { name: 'Drink water', mins: 1, cat: 'Physical' },
-];
-
-const CATEGORY_META: { id: RestCategory; label: string; softKey: 'sage' | 'lavender' | 'mint' | 'honey' }[] = [
-  { id: 'Physical', label: 'Physical', softKey: 'sage' },
-  { id: 'Mental', label: 'Mental', softKey: 'lavender' },
-  { id: 'Social', label: 'Social', softKey: 'mint' },
-  { id: 'Nourishment', label: 'Nourish', softKey: 'honey' },
 ];
 
 function categoryColor(t: ReturnType<typeof useTokens>, cat: RestCategory) {
@@ -92,7 +88,7 @@ function HabitRow({ habit, streakDays, week, gripHandlers, onToggle, onDelete }:
 }) {
   const t = useTokens();
   const done = habit.completedToday;
-  const color = categoryColor(t, habit.category);
+  const color = habit.color ?? categoryColor(t, habit.category);
 
   return (
     <View style={{
@@ -106,9 +102,13 @@ function HabitRow({ habit, streakDays, week, gripHandlers, onToggle, onDelete }:
         </View>
       )}
       <View style={{ width: 42, height: 42, borderRadius: 999, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 16, color: t.colors.bg.card }}>
-          {habit.name.trim()[0]?.toUpperCase() ?? '?'}
-        </Text>
+        {habit.icon && TASK_ICON_PATHS[habit.icon] ? (
+          <CategoryIcon id={habit.icon} size={19} color={t.colors.bg.card} />
+        ) : (
+          <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 16, color: t.colors.bg.card }}>
+            {habit.name.trim()[0]?.toUpperCase() ?? '?'}
+          </Text>
+        )}
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={{ fontFamily: FONTS.sansMedium, fontSize: 16, color: done ? t.colors.text.muted : t.colors.text.primary }}>
@@ -175,7 +175,8 @@ export function HabitsScreen() {
   const [addOpen, setAddOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [name, setName] = useState('');
-  const [cat, setCat] = useState<RestCategory>('Physical');
+  const [icon, setIcon] = useState('mind');
+  const [color, setColor] = useState<string>(COLORS[0]);
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
 
   const habits = restTasks.filter((h) => !h.isPreset);
@@ -184,7 +185,7 @@ export function HabitsScreen() {
   function handleDeleteHabit(habit: RestTask) {
     removeRestTask(habit.id);
     showToast(`"${habit.name}" deleted`, () => {
-      addRestTask(habit.name, habit.durationMinutes, habit.category);
+      addRestTask(habit.name, habit.durationMinutes, habit.color, habit.icon, habit.category);
     });
   }
 
@@ -194,7 +195,7 @@ export function HabitsScreen() {
       if (v) return;
       AsyncStorage.setItem(SEED_KEY, '1').catch(() => {});
       if (habits.length === 0) {
-        STARTERS.forEach((st) => addRestTask(st.name, st.mins, st.cat));
+        STARTERS.forEach((st) => addRestTask(st.name, st.mins, undefined, undefined, st.cat));
       }
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -203,11 +204,11 @@ export function HabitsScreen() {
   const heatmapDayData = useMemo(() => {
     const map = new Map<string, { count: number; color: string }>();
     habits.forEach((h) => {
-      const color = categoryColor(t, h.category);
+      const c = h.color ?? categoryColor(t, h.category);
       (habitHistory[h.id] ?? []).forEach((d) => {
         const existing = map.get(d);
         if (existing) existing.count += 1;
-        else map.set(d, { count: 1, color });
+        else map.set(d, { count: 1, color: c });
       });
     });
     return map;
@@ -233,9 +234,10 @@ export function HabitsScreen() {
 
   function handleAdd() {
     if (!name.trim()) return;
-    addRestTask(name.trim(), 10, cat);
+    addRestTask(name.trim(), 10, color, icon);
     setName('');
-    setCat('Physical');
+    setIcon('mind');
+    setColor(COLORS[0]);
     setAddOpen(false);
   }
 
@@ -363,7 +365,7 @@ export function HabitsScreen() {
             backgroundColor: t.colors.bg.input, borderRadius: 18, paddingHorizontal: 16,
             borderWidth: 2, borderColor: t.colors.accent.main,
           }}>
-            <View style={{ width: 30, height: 30, borderRadius: 999, backgroundColor: categoryColor(t, cat), alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 30, height: 30, borderRadius: 999, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 13, color: t.colors.bg.card }}>
                 {name.trim()[0]?.toUpperCase() ?? '?'}
               </Text>
@@ -375,20 +377,30 @@ export function HabitsScreen() {
             />
           </View>
           <SectionLabel style={{ marginTop: 20, marginBottom: 9, fontSize: 12.5, color: t.colors.text.secondary }}>Category</SectionLabel>
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-            {CATEGORY_META.map((c) => {
-              const on = cat === c.id;
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+            {TASK_CATEGORIES.map((ic) => {
+              const on = icon === ic.id;
               return (
-                <Pressable key={c.id} onPress={() => setCat(c.id)} style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 7,
-                  paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999,
-                  backgroundColor: on ? t.colors.ink : t.colors.bg.input,
+                <Pressable key={ic.id} onPress={() => setIcon(ic.id)} style={{
+                  width: 46, height: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: on ? t.colors.accent.soft : t.colors.bg.input,
+                  borderWidth: on ? 1.5 : 0, borderColor: color,
                 }}>
-                  <View style={{ width: 11, height: 11, borderRadius: 999, backgroundColor: categoryColor(t, c.id) }} />
-                  <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 14, color: on ? t.colors.text.onInk : t.colors.text.secondary }}>
-                    {c.label}
-                  </Text>
+                  <CategoryIcon id={ic.id} size={20} color={on ? color : t.colors.text.secondary} />
                 </Pressable>
+              );
+            })}
+          </View>
+          <SectionLabel style={{ marginTop: 14, marginBottom: 9, fontSize: 12.5, color: t.colors.text.secondary }}>Colour</SectionLabel>
+          <View style={{ flexDirection: 'row', gap: 7 }}>
+            {COLORS.map((c) => {
+              const on = color === c;
+              return (
+                <Pressable key={c} onPress={() => setColor(c)} style={{
+                  flex: 1, aspectRatio: 1, borderRadius: 999, backgroundColor: c,
+                  borderWidth: on ? 2.5 : 0, borderColor: t.colors.bg.sheet,
+                  transform: [{ scale: on ? 1.15 : 1 }],
+                }} />
               );
             })}
           </View>

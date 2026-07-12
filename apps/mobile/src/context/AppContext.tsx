@@ -58,6 +58,8 @@ export interface RestTask {
   durationMinutes: number;
   category: RestCategory;
   skippedToday?: boolean;
+  color?: string;
+  icon?: string;
 }
 
 export interface ActiveRestTimer {
@@ -148,7 +150,7 @@ interface AppContextType {
   completedRestDays: Date[];
   partialRestDays: { date: Date; pct: number }[];
   toggleRestTask: (id: string) => void;
-  addRestTask: (name: string, durationMinutes?: number, category?: RestCategory) => void;
+  addRestTask: (name: string, durationMinutes?: number, color?: string, icon?: string, category?: RestCategory) => void;
   reorderRestTasks: (next: RestTask[]) => void;
   removeRestTask: (id: string) => void;
 
@@ -858,7 +860,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const addRestTask = (name: string, durationMinutes = 10, category?: RestCategory) => {
+  const addRestTask = (name: string, durationMinutes = 10, color?: string, icon?: string, category?: RestCategory) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     const newTask: RestTask = {
@@ -868,6 +870,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       completedToday: false,
       durationMinutes,
       category: category ?? ('My Tasks' as RestCategory),
+      ...(color ? { color } : {}),
+      ...(icon ? { icon } : {}),
     };
     setRestTasks((prev) => [...prev, newTask]);
     const { userId: uid } = syncRef.current;

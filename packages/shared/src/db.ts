@@ -34,6 +34,8 @@ export interface DbRestTask {
   durationMinutes: number;
   category: string;
   skippedToday?: boolean;
+  color?: string;
+  icon?: string;
 }
 
 export type DbRestGoalTier = 'easy' | 'standard' | 'dedicated';
@@ -74,6 +76,7 @@ export async function dbLoad(userId: string) {
   const customRestTasks: DbRestTask[] = (restRes.data ?? []).map((r: any) => ({
     id: r.id, name: r.name, isPreset: false,
     durationMinutes: r.duration_minutes, category: r.category,
+    color: r.color ?? undefined, icon: r.icon ?? undefined,
   }));
 
   // habit_id → array of day strings (Date#toDateString format, matching local state)
@@ -128,7 +131,8 @@ export function dbDeleteCompleted(userId: string, ctId: string) {
 export function dbUpsertRestTask(userId: string, rt: DbRestTask) {
   sb().from('rest_tasks').upsert(
     { id: rt.id, user_id: userId, name: rt.name,
-      duration_minutes: rt.durationMinutes, is_preset: false, category: rt.category },
+      duration_minutes: rt.durationMinutes, is_preset: false, category: rt.category,
+      color: rt.color ?? null, icon: rt.icon ?? null },
     { onConflict: 'id,user_id' }
   ).then(() => {}, () => {});
 }
@@ -203,7 +207,8 @@ export async function dbBulkPush(
     customRestTasks.length
       ? sb().from('rest_tasks').upsert(
           customRestTasks.map((rt) => ({ id: rt.id, user_id: userId, name: rt.name,
-            duration_minutes: rt.durationMinutes, is_preset: false, category: rt.category })),
+            duration_minutes: rt.durationMinutes, is_preset: false, category: rt.category,
+            color: rt.color ?? null, icon: rt.icon ?? null })),
           { onConflict: 'id,user_id' }
         )
       : Promise.resolve(),
