@@ -108,7 +108,7 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
   const remaining = pomodoroSession?.remainingSeconds ?? 0;
   const progress = phase === 'complete' ? 1 : Math.min((total - remaining) / total, 1);
   const paused = phase === 'session' && !pomodoroSession?.isRunning;
-  const durMin = Math.round(total / 60);
+  const durMin = Math.round(remaining / 60);
 
   const s = styles(t);
 
@@ -132,7 +132,7 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
             </View>
             <View style={s.ringWrap}>
               <Ring progress={0} size={220} stroke={12} color={t.colors.accent.main}>
-                <Text style={s.ringTime}>{formatMmSs(total)}</Text>
+                <Text style={s.ringTime}>{formatMmSs(remaining)}</Text>
               </Ring>
             </View>
             <View style={s.pad}>

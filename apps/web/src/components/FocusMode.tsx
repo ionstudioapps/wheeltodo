@@ -96,7 +96,7 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
   const remaining = pomodoroSession?.remainingSeconds ?? 0;
   const progress = phase === "complete" ? 1 : Math.min((total - remaining) / total, 1);
   const paused = phase === "session" && !pomodoroSession?.isRunning;
-  const durMin = Math.round(total / 60);
+  const durMin = Math.round(remaining / 60);
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "var(--bg-screen)", display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -119,7 +119,7 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 32px 0", minHeight: 0 }}>
               <Ring progress={0} size={230} stroke={12}>
                 <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 44, fontWeight: 300, color: "var(--text-primary)", letterSpacing: "0.04em" }}>
-                  {formatMmSs(total)}
+                  {formatMmSs(remaining)}
                 </span>
               </Ring>
             </div>
