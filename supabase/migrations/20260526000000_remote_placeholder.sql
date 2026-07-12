@@ -1,0 +1,3 @@
+-- Placeholder. This version was applied directly on the remote database
+-- before the repo tracked it; the file exists only to keep the local and
+-- remote migration histories aligned. Do not add statements here.
