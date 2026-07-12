@@ -110,6 +110,7 @@ interface AppContextType {
   setDailyGoal: (goal: number) => void;
   notificationsEnabled: boolean;
   setNotificationsEnabled: (enabled: boolean) => void;
+  // Gates the haptic ticks while the wheel spins ("Wheel haptics" on the You tab).
   wheelSoundEnabled: boolean;
   setWheelSoundEnabled: (enabled: boolean) => void;
 

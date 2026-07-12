@@ -106,6 +106,7 @@ export function YouScreen() {
     user, logout, streak, completedTasks, theme, setTheme,
     notifPrefs, setNotifPref, isPremium, activatePremium, resetOnboarding,
     deactivatePremium, planBilling, setPlanBilling,
+    wheelSoundEnabled, setWheelSoundEnabled,
   } = useApp();
   const [confirmDowngrade, setConfirmDowngrade] = useState(false);
   const otherBilling = planBilling === 'annual' ? 'monthly' : 'annual';
@@ -172,6 +173,21 @@ export function YouScreen() {
               </View>
             );
           })}
+        </View>
+
+        {/* Feedback */}
+        <SectionLabel style={{ marginBottom: 14 }}>Feedback</SectionLabel>
+        <View style={[s.settingCard, cardShadow(t.dark), { marginBottom: 28 }]}>
+          <View style={s.settingRow}>
+            <View style={[s.settingChip, { backgroundColor: t.colors.softs.coral }]}>
+              <Flame size={19} color={t.colors.accent.main} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.settingTitle}>Wheel haptics</Text>
+              <Text style={s.settingDesc}>Ticks you can feel as the wheel spins</Text>
+            </View>
+            <Toggle value={wheelSoundEnabled} onChange={setWheelSoundEnabled} />
+          </View>
         </View>
 
         {/* Theme */}
