@@ -969,7 +969,7 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
       )}
 
       {recapOpen && <WeeklyRecap onClose={() => setRecapOpen(false)} />}
-      {upgradeOpen && <UpgradeScreen onClose={() => setUpgradeOpen(false)} onActivate={() => { void activate(); setUpgradeOpen(false); }} />}
+      {upgradeOpen && <UpgradeScreen onClose={() => setUpgradeOpen(false)} onActivate={(b) => { void activate(b); setUpgradeOpen(false); }} />}
       {(focusOpen || pomodoroSession) && (
         <FocusMode onDone={(completed) => { setFocusOpen(false); if (completed) setConfetti(true); }} />
       )}

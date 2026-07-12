@@ -79,7 +79,7 @@ function PriceCard({ isAnnual }: { isAnnual: boolean }) {
   );
 }
 
-export function UpgradeScreen({ onClose, onActivate }: { onClose: () => void; onActivate: () => void }) {
+export function UpgradeScreen({ onClose, onActivate }: { onClose: () => void; onActivate: (billing: "monthly" | "annual") => void }) {
   const [billing, setBilling] = useState<"monthly" | "annual">("annual");
   const isAnnual = billing === "annual";
 
@@ -98,7 +98,7 @@ export function UpgradeScreen({ onClose, onActivate }: { onClose: () => void; on
 
   const cta = (
     <>
-      <button onClick={onActivate} className="wt-press" style={{
+      <button onClick={() => onActivate(billing)} className="wt-press" style={{
         width: "100%", height: 54, background: "var(--action-primary)", color: "var(--action-on-primary)",
         border: "none", borderRadius: "var(--r-tag)", fontSize: 16, fontWeight: 600, cursor: "pointer", marginBottom: 12,
       }}>

@@ -56,6 +56,7 @@ export interface PomodoroSession {
 export type RestCategory = "Physical" | "Mental" | "Social" | "Nourishment" | "My Tasks";
 export type DailyMood = "drained" | "okay" | "restless" | null;
 export type RestGoalTier = "easy" | "standard" | "dedicated";
+export type PlanBilling = "monthly" | "annual";
 
 export const REST_GOAL_MINUTES: Record<RestGoalTier, number> = {
   easy: 15,
@@ -208,7 +209,10 @@ interface AppContextType {
   resetOnboarding: () => void;
 
   isPremium: boolean;
-  activatePremium: () => Promise<void>;
+  activatePremium: (billing?: PlanBilling) => Promise<void>;
+  deactivatePremium: () => void;
+  planBilling: PlanBilling | null;
+  setPlanBilling: (b: PlanBilling) => void;
 
   theme: ThemeName;
   setTheme: (t: ThemeName) => void;
@@ -259,6 +263,7 @@ const KEYS = {
   defaultTimerMinutes: "wt.defaultTimerMinutes",
   hasSeenOnboarding: "wt.hasSeenOnboarding",
   isPremium: "wt.isPremium",
+  planBilling: "wt.planBilling",
   theme: "wt.theme",
   spinsToday: "wt.spinsToday",
   spinsTodayDate: "wt.spinsTodayDate",
@@ -413,6 +418,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     setDefaultTimerMinutesState(ls<number>(KEYS.defaultTimerMinutes, 25));
     setHasSeenOnboarding(ls<boolean>(KEYS.hasSeenOnboarding, false));
     setIsPremium(ls<boolean>(KEYS.isPremium, false));
+    setPlanBillingState(ls<PlanBilling | null>(KEYS.planBilling, null));
     const savedTheme = ls<ThemeName>(KEYS.theme, 'warm-start');
     setThemeState(savedTheme);
     applyTheme(savedTheme);
@@ -738,9 +744,17 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   // Replay the first-run walkthrough (You tab → "Replay the tour")
   const resetOnboarding = useCallback(() => setHasSeenOnboarding(false), []);
 
-  const activatePremium = useCallback(async () => {
+  const [planBilling, setPlanBillingState] = useState<PlanBilling | null>(null);
+  const setPlanBilling = useCallback((b: PlanBilling) => {
+    setPlanBillingState(b);
+    lsSet(KEYS.planBilling, b);
+  }, []);
+
+  const activatePremium = useCallback(async (billing: PlanBilling = "monthly") => {
     setIsPremium(true);
     lsSet(KEYS.isPremium, true);
+    setPlanBillingState(billing);
+    lsSet(KEYS.planBilling, billing);
     if (!userId) return;
     // Persist premium flag + push all current data to Supabase
     await dbUpsertSettings(userId, { isPremium: true, dailyGoal, defaultTimerMinutes, restGoalTier });
@@ -748,6 +762,16 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     await dbBulkPush(userId, tasks, completedTasks, customRestTasks);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, tasks, completedTasks, restTasks, dailyGoal, defaultTimerMinutes, restGoalTier]);
+
+  // Downgrade to Seed. Existing over-cap habits/tasks stay usable (adding new
+  // ones is what the caps gate); the UI copy covers this.
+  const deactivatePremium = useCallback(() => {
+    setIsPremium(false);
+    lsSet(KEYS.isPremium, false);
+    setPlanBillingState(null);
+    localStorage.removeItem(KEYS.planBilling);
+    if (userId) dbUpsertSettings(userId, { isPremium: false });
+  }, [userId]);
 
   const addCategory = (cat: string) => {
     const trimmed = cat.trim();
@@ -944,7 +968,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     restMinutesToday, restGoalMinutes,
     restStreak, bestRestStreak,
     hasSeenOnboarding, markOnboardingSeen, resetOnboarding,
-    isPremium, activatePremium,
+    isPremium, activatePremium, deactivatePremium, planBilling, setPlanBilling,
     theme, setTheme,
   };
 

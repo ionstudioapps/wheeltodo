@@ -105,7 +105,10 @@ export function YouScreen() {
   const {
     user, logout, streak, completedTasks, theme, setTheme,
     notifPrefs, setNotifPref, isPremium, activatePremium, resetOnboarding,
+    deactivatePremium, planBilling, setPlanBilling,
   } = useApp();
+  const [confirmDowngrade, setConfirmDowngrade] = useState(false);
+  const otherBilling = planBilling === 'annual' ? 'monthly' : 'annual';
 
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -207,7 +210,7 @@ export function YouScreen() {
         <View style={[s.settingCard, cardShadow(t.dark), { padding: 18, marginBottom: 28 }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 16, color: t.colors.text.primary }}>
-              {isPremium ? 'Bloom' : 'Seed · Free'}
+              {isPremium ? `Bloom${planBilling ? ` · ${planBilling}` : ''}` : 'Seed · Free'}
             </Text>
             {isPremium ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: t.colors.softs.sage, borderRadius: 100, paddingHorizontal: 10, paddingVertical: 4 }}>
@@ -218,13 +221,41 @@ export function YouScreen() {
               <BloomChip />
             )}
           </View>
-          <Text style={{ fontFamily: FONTS.sans, fontSize: 12, color: t.colors.text.secondary, marginBottom: isPremium ? 0 : 14 }}>
+          <Text style={{ fontFamily: FONTS.sans, fontSize: 12, color: t.colors.text.secondary, marginBottom: 14 }}>
             {isPremium
               ? 'Unlimited spins, habits and AI · thank you for growing with us'
               : '5 spins/day · 3 habits · 1 AI breakdown/day'}
           </Text>
           {!isPremium && (
             <SpinPill full small onPress={() => setUpgradeOpen(true)}>More with Bloom</SpinPill>
+          )}
+          {isPremium && (
+            <View style={{ borderTopWidth: 1, borderTopColor: t.colors.hairline, paddingTop: 8, gap: 2 }}>
+              <Pressable onPress={() => setPlanBilling(otherBilling)} style={{ paddingVertical: 8 }}>
+                <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 13.5, color: t.colors.text.primary }}>
+                  Switch to {otherBilling} billing
+                </Text>
+              </Pressable>
+              {confirmDowngrade ? (
+                <View style={{ paddingVertical: 8 }}>
+                  <Text style={{ fontFamily: FONTS.sans, fontSize: 12.5, lineHeight: 19, color: t.colors.text.secondary, marginBottom: 8 }}>
+                    Move to Seed? Your extra habits and tasks stay — the free caps only limit adding new ones.
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 18 }}>
+                    <Pressable onPress={() => { deactivatePremium(); setConfirmDowngrade(false); }}>
+                      <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 13, color: t.colors.action.danger }}>Yes, move to Seed</Text>
+                    </Pressable>
+                    <Pressable onPress={() => setConfirmDowngrade(false)}>
+                      <Text style={{ fontFamily: FONTS.sans, fontSize: 13, color: t.colors.text.secondary }}>Keep Bloom</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable onPress={() => setConfirmDowngrade(true)} style={{ paddingVertical: 8 }}>
+                  <Text style={{ fontFamily: FONTS.sans, fontSize: 13.5, color: t.colors.text.muted }}>Downgrade to Seed</Text>
+                </Pressable>
+              )}
+            </View>
           )}
         </View>
 
@@ -255,7 +286,7 @@ export function YouScreen() {
       </ScrollView>
 
       {authOpen && <AuthSheet onClose={() => setAuthOpen(false)} />}
-      <UpgradeScreen visible={upgradeOpen} onClose={() => setUpgradeOpen(false)} onActivate={() => { activatePremium(); setUpgradeOpen(false); }} />
+      <UpgradeScreen visible={upgradeOpen} onClose={() => setUpgradeOpen(false)} onActivate={(b) => { activatePremium(b); setUpgradeOpen(false); }} />
     </View>
   );
 }

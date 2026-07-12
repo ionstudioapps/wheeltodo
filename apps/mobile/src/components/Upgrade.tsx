@@ -21,7 +21,7 @@ const BLOOM_FEATURES = [
 ];
 
 export function UpgradeScreen({ visible, onClose, onActivate }: {
-  visible: boolean; onClose: () => void; onActivate: () => void;
+  visible: boolean; onClose: () => void; onActivate: (billing: 'monthly' | 'annual') => void;
 }) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
@@ -90,7 +90,7 @@ export function UpgradeScreen({ visible, onClose, onActivate }: {
             )}
           </View>
 
-          <SpinPill full onPress={onActivate}>Try Bloom · 7 days free</SpinPill>
+          <SpinPill full onPress={() => onActivate(billing)}>Try Bloom · 7 days free</SpinPill>
           <Pressable onPress={onClose} style={{ alignItems: 'center', paddingVertical: 14 }}>
             <Text style={s.continueSeed}>Continue with Seed</Text>
           </Pressable>

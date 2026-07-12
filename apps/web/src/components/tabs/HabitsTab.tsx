@@ -359,7 +359,7 @@ export function HabitsTab() {
         </Sheet>
       )}
 
-      {upgradeOpen && <UpgradeScreen onClose={() => setUpgradeOpen(false)} onActivate={() => { void activate(); setUpgradeOpen(false); }} />}
+      {upgradeOpen && <UpgradeScreen onClose={() => setUpgradeOpen(false)} onActivate={(b) => { void activate(b); setUpgradeOpen(false); }} />}
       <Toast toast={toast} onUndo={() => { toast?.onUndo?.(); dismissToast(); }} onDismiss={dismissToast} />
     </div>
   );

@@ -788,7 +788,7 @@ export function TasksScreen() {
 
       <BrainStarter visible={brainOpen} onClose={() => setBrainOpen(false)} onFinished={registerBrainGame} />
       <WeeklyRecap visible={recapOpen} onClose={() => setRecapOpen(false)} />
-      <UpgradeScreen visible={upgradeOpen} onClose={() => setUpgradeOpen(false)} onActivate={() => { activatePremium(); setUpgradeOpen(false); }} />
+      <UpgradeScreen visible={upgradeOpen} onClose={() => setUpgradeOpen(false)} onActivate={(b) => { activatePremium(b); setUpgradeOpen(false); }} />
       <FocusMode
         visible={focusOpen || !!pomodoroSession}
         onDone={(completed) => { setFocusOpen(false); if (completed) celebrate(); }}

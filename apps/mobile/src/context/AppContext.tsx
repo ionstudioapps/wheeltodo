@@ -41,6 +41,7 @@ export interface PomodoroSession {
 export type RestCategory = 'Physical' | 'Mental' | 'Social' | 'Nourishment' | 'My Tasks';
 export type DailyMood = 'drained' | 'okay' | 'restless' | null;
 export type RestGoalTier = 'easy' | 'standard' | 'dedicated';
+export type PlanBilling = 'monthly' | 'annual';
 
 export const REST_GOAL_MINUTES: Record<RestGoalTier, number> = {
   easy: 15,
@@ -171,7 +172,10 @@ interface AppContextType {
   theme: ThemeName;
   setTheme: (t: ThemeName) => void;
   isPremium: boolean;
-  activatePremium: () => void;
+  activatePremium: (billing?: PlanBilling) => void;
+  deactivatePremium: () => void;
+  planBilling: PlanBilling | null;
+  setPlanBilling: (b: PlanBilling) => void;
   cancelPomodoro: () => void;
   spinsToday: number;
   aiUsesToday: number;
@@ -221,6 +225,7 @@ const STORAGE_KEYS = {
   hasSeenOnboarding: 'wheelTodo.hasSeenOnboarding',
   theme: 'wheelTodo.theme',
   isPremium: 'wheelTodo.isPremium',
+  planBilling: 'wheelTodo.planBilling',
   spinsToday: 'wheelTodo.spinsToday',
   spinsTodayDate: 'wheelTodo.spinsTodayDate',
   aiUsesToday: 'wheelTodo.aiUsesToday',
@@ -378,10 +383,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (onboardingRaw) setHasSeenOnboarding(JSON.parse(onboardingRaw));
 
         // Design-port additions
-        const [[, themeRaw], [, premiumRaw], [, spinsRaw], [, spinsDateRaw],
+        const [[, themeRaw], [, premiumRaw], [, billingRaw], [, spinsRaw], [, spinsDateRaw],
                [, aiRaw], [, aiDateRaw], [, voiceRaw], [, voiceKeyRaw],
                [, brainRaw], [, habitHistRaw], [, notifRaw]] = await AsyncStorage.multiGet([
-          STORAGE_KEYS.theme, STORAGE_KEYS.isPremium,
+          STORAGE_KEYS.theme, STORAGE_KEYS.isPremium, STORAGE_KEYS.planBilling,
           STORAGE_KEYS.spinsToday, STORAGE_KEYS.spinsTodayDate,
           STORAGE_KEYS.aiUsesToday, STORAGE_KEYS.aiUsesTodayDate,
           STORAGE_KEYS.voiceUsesMonth, STORAGE_KEYS.voiceUsesMonthKey,
@@ -389,6 +394,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ]);
         if (themeRaw) setThemeState(JSON.parse(themeRaw) as ThemeName);
         if (premiumRaw) setIsPremium(JSON.parse(premiumRaw));
+        if (billingRaw) setPlanBillingState(JSON.parse(billingRaw));
         if (spinsRaw && spinsDateRaw && JSON.parse(spinsDateRaw) === todayStr) setSpinsToday(JSON.parse(spinsRaw));
         if (aiRaw && aiDateRaw && JSON.parse(aiDateRaw) === todayStr) setAiUsesToday(JSON.parse(aiRaw));
         const monthKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
@@ -929,9 +935,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEYS.theme, JSON.stringify(t)).catch(() => {});
   }, []);
 
-  const activatePremium = useCallback(() => {
+  const [planBilling, setPlanBillingState] = useState<PlanBilling | null>(null);
+  const setPlanBilling = useCallback((b: PlanBilling) => {
+    setPlanBillingState(b);
+    AsyncStorage.setItem(STORAGE_KEYS.planBilling, JSON.stringify(b)).catch(() => {});
+  }, []);
+
+  const activatePremium = useCallback((billing: PlanBilling = 'monthly') => {
     setIsPremium(true);
-    AsyncStorage.setItem(STORAGE_KEYS.isPremium, JSON.stringify(true)).catch(() => {});
+    setPlanBillingState(billing);
+    AsyncStorage.multiSet([
+      [STORAGE_KEYS.isPremium, JSON.stringify(true)],
+      [STORAGE_KEYS.planBilling, JSON.stringify(billing)],
+    ]).catch(() => {});
+    const { userId: uid } = syncRef.current;
+    if (uid) dbUpsertSettings(uid, { isPremium: true });
+  }, []);
+
+  // Downgrade to Seed. Existing over-cap habits/tasks stay usable (adding new
+  // ones is what the caps gate); the UI copy covers this.
+  const deactivatePremium = useCallback(() => {
+    setIsPremium(false);
+    setPlanBillingState(null);
+    AsyncStorage.multiSet([
+      [STORAGE_KEYS.isPremium, JSON.stringify(false)],
+      [STORAGE_KEYS.planBilling, JSON.stringify(null)],
+    ]).catch(() => {});
+    const { userId: uid } = syncRef.current;
+    if (uid) dbUpsertSettings(uid, { isPremium: false });
   }, []);
 
   const registerAiUse = useCallback(() => {
@@ -1144,7 +1175,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     hasSeenOnboarding,
     markOnboardingSeen: () => setHasSeenOnboarding(true),
     resetOnboarding: () => setHasSeenOnboarding(false),
-    theme, setTheme, isPremium, activatePremium, cancelPomodoro,
+    theme, setTheme, isPremium, activatePremium, deactivatePremium, planBilling, setPlanBilling, cancelPomodoro,
     spinsToday, aiUsesToday, registerAiUse,
     voiceUsesThisMonth, registerVoiceUse,
     lastBrainGameAt, registerBrainGame,

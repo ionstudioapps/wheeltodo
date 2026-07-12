@@ -28,7 +28,8 @@ const NOTIF_ROWS: { key: keyof NotifPrefs; icon: string; chipVar: string; iconVa
 
 export function YouTab({ user, onSignOut }: YouTabProps) {
   const { theme, setTheme, streak, completedTasks, notifPrefs, setNotifPref, resetOnboarding } = useApp();
-  const { isPremium, activate } = useSubscription();
+  const { isPremium, activate, deactivate, planBilling, setPlanBilling } = useSubscription();
+  const [confirmDowngrade, setConfirmDowngrade] = useState(false);
 
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -118,16 +119,49 @@ export function YouTab({ user, onSignOut }: YouTabProps) {
     </div>
   );
 
+  const otherBilling = planBilling === "annual" ? "monthly" : "annual";
   const planCard = isPremium ? (
     <div style={{ background: "var(--bg-card)", borderRadius: "var(--r-card)", padding: "18px 20px", boxShadow: "var(--shadow-card)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <span style={{ fontSize: 16, color: "var(--text-primary)", fontWeight: 500 }}>Bloom</span>
+        <span style={{ fontSize: 16, color: "var(--text-primary)", fontWeight: 500 }}>
+          Bloom{planBilling ? ` · ${planBilling}` : ""}
+        </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--c-sage-soft)", borderRadius: "var(--r-tag)", padding: "4px 10px" }}>
           <span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--c-sage)" }} />
           <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--action-success)" }}>Active</span>
         </span>
       </div>
-      <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Unlimited spins, habits and AI · thank you for growing with us</div>
+      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 14 }}>Unlimited spins, habits and AI · thank you for growing with us</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, borderTop: "1px solid var(--border-hairline)", paddingTop: 10 }}>
+        <button
+          onClick={() => setPlanBilling(otherBilling)}
+          style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "7px 0", fontSize: 13.5, fontWeight: 500, color: "var(--text-primary)" }}
+        >
+          Switch to {otherBilling} billing
+        </button>
+        {confirmDowngrade ? (
+          <div style={{ padding: "7px 0" }}>
+            <p style={{ margin: "0 0 8px", fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+              Move to Seed? Your extra habits and tasks stay — the free caps only limit adding new ones.
+            </p>
+            <div style={{ display: "flex", gap: 14 }}>
+              <button onClick={() => { deactivate(); setConfirmDowngrade(false); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 600, color: "var(--action-danger)" }}>
+                Yes, move to Seed
+              </button>
+              <button onClick={() => setConfirmDowngrade(false)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, color: "var(--text-secondary)" }}>
+                Keep Bloom
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmDowngrade(true)}
+            style={{ background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "7px 0", fontSize: 13.5, color: "var(--text-muted)" }}
+          >
+            Downgrade to Seed
+          </button>
+        )}
+      </div>
     </div>
   ) : (
     <div style={{ background: "var(--bg-card)", borderRadius: "var(--r-card)", padding: "18px 20px", boxShadow: "var(--shadow-card)" }}>
@@ -231,7 +265,7 @@ export function YouTab({ user, onSignOut }: YouTabProps) {
         </div>
       </div>
 
-      {upgradeOpen && <UpgradeScreen onClose={() => setUpgradeOpen(false)} onActivate={() => { void activate(); setUpgradeOpen(false); }} />}
+      {upgradeOpen && <UpgradeScreen onClose={() => setUpgradeOpen(false)} onActivate={(b) => { void activate(b); setUpgradeOpen(false); }} />}
     </div>
   );
 }
