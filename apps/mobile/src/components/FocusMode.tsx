@@ -126,7 +126,7 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
         {phase === 'prestart' && (
           <>
             <View style={s.pad}>
-              <Pressable hitSlop={10} onPress={() => { cancelPomodoro(); onDone(false); }} style={{ paddingVertical: 8 }}>
+              <Pressable hitSlop={10} onPress={() => { cancelPomodoro(); onDone(false); }} accessibilityRole="button" accessibilityLabel="Back" style={{ paddingVertical: 8 }}>
                 <ArrowLeft size={22} color={t.colors.text.secondary} strokeWidth={2} />
               </Pressable>
               <Text style={s.eyebrow}>FOCUS ON.</Text>
@@ -183,7 +183,7 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
                 <Text style={s.eyebrow}>FOCUS ON</Text>
                 <Text numberOfLines={1} style={s.sessionTask}>{pomodoroSession?.taskName}</Text>
               </View>
-              <Pressable hitSlop={10} onPress={() => setShowTimer((v) => !v)} style={{ opacity: showTimer ? 0.9 : 0.35 }}>
+              <Pressable hitSlop={10} onPress={() => setShowTimer((v) => !v)} accessibilityRole="button" accessibilityLabel={showTimer ? 'Hide timer' : 'Show timer'} style={{ opacity: showTimer ? 0.9 : 0.35 }}>
                 <Clock size={20} color={t.colors.text.primary} strokeWidth={2} />
               </Pressable>
             </View>

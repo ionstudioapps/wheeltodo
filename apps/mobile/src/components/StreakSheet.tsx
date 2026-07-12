@@ -24,7 +24,7 @@ function QuickRestChip({ task, onToggle }: { task: RestTask; onToggle: () => voi
   const done = task.completedToday;
   const color = categoryColor(t, task.category);
   return (
-    <Pressable onPress={onToggle} style={{
+    <Pressable onPress={onToggle} accessibilityRole="button" accessibilityState={{ checked: done }} accessibilityLabel={`${task.name}, ${task.durationMinutes} minutes`} style={{
       flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 999,
       paddingVertical: 9, paddingLeft: 10, paddingRight: 14,
       backgroundColor: done ? color : t.colors.bg.card,

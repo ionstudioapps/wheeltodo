@@ -98,7 +98,7 @@ function HabitRow({ habit, streakDays, week, gripHandlers, onToggle, onDelete }:
       ...cardShadow(t.dark),
     }}>
       {gripHandlers && (
-        <View {...gripHandlers} hitSlop={{ top: 12, bottom: 12, left: 12, right: 6 }} style={{ marginLeft: -5, marginRight: -7 }}>
+        <View {...gripHandlers} accessible accessibilityLabel={`Reorder ${habit.name}`} hitSlop={{ top: 12, bottom: 12, left: 12, right: 6 }} style={{ marginLeft: -5, marginRight: -7 }}>
           <GripVertical size={16} color={t.colors.text.muted} strokeWidth={1.8} />
         </View>
       )}
@@ -124,10 +124,10 @@ function HabitRow({ habit, streakDays, week, gripHandlers, onToggle, onDelete }:
           ))}
         </View>
       </View>
-      <Pressable hitSlop={8} onPress={onDelete}>
+      <Pressable hitSlop={8} onPress={onDelete} accessibilityRole="button" accessibilityLabel={`Delete ${habit.name}`}>
         <Trash2 size={15} color={t.colors.text.muted} strokeWidth={1.8} />
       </Pressable>
-      <Pressable hitSlop={8} onPress={onToggle} style={{
+      <Pressable hitSlop={8} onPress={onToggle} accessibilityRole="button" accessibilityState={{ checked: done }} accessibilityLabel={`Mark ${habit.name} ${done ? 'not done' : 'done'}`} style={{
         width: 30, height: 30, borderRadius: 999,
         backgroundColor: done ? color : 'transparent',
         borderWidth: done ? 0 : 1.5, borderColor: t.colors.hairline,

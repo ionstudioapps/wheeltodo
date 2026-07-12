@@ -54,14 +54,14 @@ function TaskRow({ task, dim, remainingLabel, gripHandlers, onComplete, onDelete
   const t = useTokens();
 
   return (
-    <Pressable onPress={onEdit} style={{
+    <Pressable onPress={onEdit} accessibilityRole="button" accessibilityLabel={`Edit ${task.name}`} style={{
       flexDirection: 'row', alignItems: 'center', gap: 13,
       backgroundColor: dim ? t.colors.bg.sunk : t.colors.bg.card,
       borderRadius: 18, paddingHorizontal: 15, paddingVertical: 14,
       ...(dim ? {} : cardShadow(t.dark)),
     }}>
       {gripHandlers && (
-        <View {...gripHandlers} hitSlop={{ top: 12, bottom: 12, left: 12, right: 6 }} style={{ marginLeft: -4, marginRight: -6 }}>
+        <View {...gripHandlers} accessible accessibilityLabel={`Reorder ${task.name}`} hitSlop={{ top: 12, bottom: 12, left: 12, right: 6 }} style={{ marginLeft: -4, marginRight: -6 }}>
           <GripVertical size={16} color={t.colors.text.muted} strokeWidth={1.8} />
         </View>
       )}
@@ -74,10 +74,10 @@ function TaskRow({ task, dim, remainingLabel, gripHandlers, onComplete, onDelete
           {remainingLabel ?? `${task.minutes} min`}
         </Text>
       </View>
-      <Pressable hitSlop={8} onPress={onDelete}>
+      <Pressable hitSlop={8} onPress={onDelete} accessibilityRole="button" accessibilityLabel={`Delete ${task.name}`}>
         <Trash2 size={16} color={t.colors.text.muted} strokeWidth={1.8} />
       </Pressable>
-      <Pressable hitSlop={8} onPress={onComplete} style={{
+      <Pressable hitSlop={8} onPress={onComplete} accessibilityRole="button" accessibilityLabel={`Mark ${task.name} done`} style={{
         width: 26, height: 26, borderRadius: 999, borderWidth: 1.5, borderColor: t.colors.hairline,
         alignItems: 'center', justifyContent: 'center',
       }}>

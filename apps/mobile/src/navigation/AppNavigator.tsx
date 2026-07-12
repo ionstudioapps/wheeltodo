@@ -35,13 +35,13 @@ function Header({ onStreak, onAvatar }: { onStreak: () => void; onAvatar: () => 
       paddingTop: insets.top + 6, paddingBottom: 4, paddingHorizontal: 22,
       backgroundColor: t.colors.bg.screen,
     }}>
-      <Pressable onPress={onStreak} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+      <Pressable onPress={onStreak} hitSlop={8} accessibilityRole="button" accessibilityLabel={`View streak, ${streak} days`} style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
         <Flame size={18} color={t.colors.accent.main} strokeWidth={2.2} />
         <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 15, color: t.colors.text.primary, fontVariant: ['tabular-nums'] }}>
           {streak}
         </Text>
       </Pressable>
-      <Pressable onPress={onAvatar} hitSlop={8} style={{
+      <Pressable onPress={onAvatar} hitSlop={8} accessibilityRole="button" accessibilityLabel="Profile" style={{
         width: 42, height: 42, borderRadius: 21,
         backgroundColor: t.colors.lavender, alignItems: 'center', justifyContent: 'center',
         borderWidth: 3, borderColor: t.colors.bg.screen,
