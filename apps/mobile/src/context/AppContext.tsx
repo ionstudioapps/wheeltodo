@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode, useRef } from 'react';
-import { getSupabaseClient, dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted, dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings } from '@todo/shared';
+import { getSupabaseClient, dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted, dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings, dbSetHabitDay } from '@todo/shared';
 import type { ThemeName } from '@todo/shared/themes';
 import { ACHIEVEMENT_DEFS, getUnlockedTierIds, type AchievementValues } from '../utils/achievements';
 
@@ -624,10 +624,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const uid = syncRef.current.userId;
     if (!uid) return;
     try {
-      const { tasks: dbTasks, completedTasks: dbCompleted, settings } = await dbLoad(uid);
+      const { tasks: dbTasks, completedTasks: dbCompleted, customRestTasks, habitHistory: dbHistory, settings } = await dbLoad(uid);
       if (dbTasks.length > 0) setTasks(dbTasks);
       if (dbCompleted.length > 0) {
         setCompletedTasks(dbCompleted.map((ct) => ({ ...ct, completedAt: new Date(ct.completedAt) })));
+      }
+      if (customRestTasks.length > 0) {
+        // Cloud is the source for the custom habit list; per-day completion
+        // state and any locally created (not yet pushed) habits stay local.
+        setRestTasks((prev) => {
+          const localById = new Map(prev.filter((t) => !t.isPreset).map((t) => [t.id, t]));
+          const merged: RestTask[] = customRestTasks.map((rt) => ({
+            id: rt.id, name: rt.name, isPreset: false,
+            completedToday: localById.get(rt.id)?.completedToday ?? false,
+            durationMinutes: rt.durationMinutes,
+            category: rt.category as RestCategory,
+          }));
+          const cloudIds = new Set(merged.map((m) => m.id));
+          const localOnly = prev.filter((t) => !t.isPreset && !cloudIds.has(t.id));
+          return [...prev.filter((t) => t.isPreset), ...merged, ...localOnly];
+        });
+      }
+      if (Object.keys(dbHistory).length > 0) {
+        setHabitHistory((local) => {
+          const next: Record<string, string[]> = { ...local };
+          Object.entries(dbHistory).forEach(([habitId, days]) => {
+            next[habitId] = Array.from(new Set([...(next[habitId] ?? []), ...days]));
+          });
+          AsyncStorage.setItem(STORAGE_KEYS.habitHistory, JSON.stringify(next)).catch(() => {});
+          return next;
+        });
       }
       if (settings) {
         setDailyGoal(settings.daily_goal);
@@ -794,6 +820,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (task) {
         const nowDone = !task.completedToday;
         const todayStr = new Date().toDateString();
+        const { userId: uid } = syncRef.current;
+        if (uid && !task.isPreset) dbSetHabitDay(uid, id, todayStr, nowDone);
         setHabitHistory((h) => {
           const existing = h[id] ?? [];
           const next = {

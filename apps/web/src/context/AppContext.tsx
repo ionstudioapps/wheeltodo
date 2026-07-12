@@ -13,7 +13,7 @@ import React, {
 import { type AchievementValues } from "../utils/achievements";
 import {
   dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted,
-  dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings, dbBulkPush,
+  dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings, dbSetHabitDay, dbBulkPush,
 } from "../utils/db";
 import { THEMES, type ThemeName } from "@todo/shared";
 
@@ -315,13 +315,39 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     const uid = syncRef.current.userId;
     if (!uid) return;
     try {
-      const { tasks: dbTasks, completedTasks: dbCompleted, settings } = await dbLoad(uid);
+      const { tasks: dbTasks, completedTasks: dbCompleted, customRestTasks, habitHistory: dbHistory, settings } = await dbLoad(uid);
       const premium = settings?.is_premium ?? false;
       setIsPremium(premium);
       lsSet(KEYS.isPremium, premium);
 
       if (dbTasks.length > 0) setTasks(dbTasks);
       if (dbCompleted.length > 0) setCompletedTasks(dbCompleted);
+      if (customRestTasks.length > 0) {
+        // Cloud is the source for the custom habit list; per-day completion
+        // state and any locally created (not yet pushed) habits stay local.
+        setRestTasks((prev) => {
+          const localById = new Map(prev.filter((t) => !t.isPreset).map((t) => [t.id, t]));
+          const merged: RestTask[] = customRestTasks.map((rt) => ({
+            id: rt.id, name: rt.name, isPreset: false,
+            completedToday: localById.get(rt.id)?.completedToday ?? false,
+            durationMinutes: rt.durationMinutes,
+            category: rt.category as RestCategory,
+          }));
+          const cloudIds = new Set(merged.map((m) => m.id));
+          const localOnly = prev.filter((t) => !t.isPreset && !cloudIds.has(t.id));
+          return [...prev.filter((t) => t.isPreset), ...merged, ...localOnly];
+        });
+      }
+      if (Object.keys(dbHistory).length > 0) {
+        setHabitHistory((local) => {
+          const next: Record<string, string[]> = { ...local };
+          Object.entries(dbHistory).forEach(([habitId, days]) => {
+            next[habitId] = Array.from(new Set([...(next[habitId] ?? []), ...days]));
+          });
+          lsSet(KEYS.habitHistory, next);
+          return next;
+        });
+      }
       if (settings) {
         setDailyGoalState(settings.daily_goal);
         setDefaultTimerMinutesState(settings.default_timer_minutes);
@@ -647,6 +673,8 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
       if (task) {
         const nowDone = !task.completedToday;
         const todayStr = new Date().toDateString();
+        const { userId: uid } = syncRef.current;
+        if (uid && !task.isPreset) dbSetHabitDay(uid, id, todayStr, nowDone);
         setHabitHistory((h) => {
           const existing = h[id] ?? [];
           const next = {

@@ -48,10 +48,11 @@ export interface DbSettings {
 // ─── Load ─────────────────────────────────────────────────────────────────────
 
 export async function dbLoad(userId: string) {
-  const [tasksRes, completedRes, restRes, settingsRes] = await Promise.all([
+  const [tasksRes, completedRes, restRes, historyRes, settingsRes] = await Promise.all([
     sb().from('tasks').select('*').eq('user_id', userId).order('created_at'),
     sb().from('completed_tasks').select('*').eq('user_id', userId).order('completed_at', { ascending: false }),
     sb().from('rest_tasks').select('*').eq('user_id', userId).eq('is_preset', false),
+    sb().from('habit_history').select('habit_id, day').eq('user_id', userId),
     sb().from('user_settings').select('*').eq('user_id', userId).maybeSingle(),
   ]);
 
@@ -70,12 +71,23 @@ export async function dbLoad(userId: string) {
   }));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const customRestTaskIds: string[] = (restRes.data ?? []).map((r: any) => r.id);
+  const customRestTasks: DbRestTask[] = (restRes.data ?? []).map((r: any) => ({
+    id: r.id, name: r.name, isPreset: false,
+    durationMinutes: r.duration_minutes, category: r.category,
+  }));
+
+  // habit_id → array of day strings (Date#toDateString format, matching local state)
+  const habitHistory: Record<string, string[]> = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (historyRes.data ?? []).forEach((r: any) => {
+    (habitHistory[r.habit_id] ??= []).push(r.day);
+  });
 
   return {
     tasks,
     completedTasks,
-    customRestTaskIds,
+    customRestTasks,
+    habitHistory,
     settings: settingsRes.data as DbSettings | null,
   };
 }
@@ -124,6 +136,24 @@ export function dbUpsertRestTask(userId: string, rt: DbRestTask) {
 export function dbDeleteRestTask(userId: string, rtId: string) {
   sb().from('rest_tasks').delete().eq('id', rtId).eq('user_id', userId)
     .then(() => {}, () => {});
+  sb().from('habit_history').delete().eq('habit_id', rtId).eq('user_id', userId)
+    .then(() => {}, () => {});
+}
+
+// ─── Habit history ────────────────────────────────────────────────────────────
+
+// `day` uses Date#toDateString format to match local habitHistory state.
+export function dbSetHabitDay(userId: string, habitId: string, day: string, done: boolean) {
+  if (done) {
+    sb().from('habit_history').upsert(
+      { user_id: userId, habit_id: habitId, day },
+      { onConflict: 'user_id,habit_id,day' }
+    ).then(() => {}, () => {});
+  } else {
+    sb().from('habit_history').delete()
+      .eq('user_id', userId).eq('habit_id', habitId).eq('day', day)
+      .then(() => {}, () => {});
+  }
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
