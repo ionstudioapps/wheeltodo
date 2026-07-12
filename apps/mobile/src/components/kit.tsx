@@ -343,7 +343,7 @@ export function WheelHub({ done = 0, total = 0 }: { done?: number; total?: numbe
 
 /* ── Small brand wheel mark ──────────────────────────────────────────────── */
 
-export function WheelMark({ size = 28 }: { size?: number }) {
+export function WheelMark({ size = 28, spin = false, hubColor }: { size?: number; spin?: boolean; hubColor?: string }) {
   const t = useTokens();
   const cx = size / 2, cy = size / 2, r = size / 2 - 0.5;
   const paths = t.colors.wheel.map((c, i) => {
@@ -353,32 +353,67 @@ export function WheelMark({ size = 28 }: { size?: number }) {
     const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
     return { d: `M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r},0,0,1,${x1.toFixed(2)},${y1.toFixed(2)} Z`, c };
   });
+  const spinVal = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!spin) return;
+    const loop = Animated.loop(
+      Animated.timing(spinVal, { toValue: 1, duration: 28000, easing: Easing.linear, useNativeDriver: true })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [spin, spinVal]);
+  const rotate = spinVal.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   return (
-    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {paths.map((p, i) => <Path key={i} d={p.d} fill={p.c} />)}
-      <Circle cx={cx} cy={cy} r={size * 0.21} fill={t.colors.ink} />
-      <Circle cx={cx} cy={cy} r={size * 0.075} fill={t.colors.bg.screen} />
-    </Svg>
+    <Animated.View style={{ width: size, height: size, transform: spin ? [{ rotate }] : undefined }}>
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {paths.map((p, i) => <Path key={i} d={p.d} fill={p.c} />)}
+        <Circle cx={cx} cy={cy} r={size * 0.21} fill={hubColor ?? t.colors.ink} />
+        <Circle cx={cx} cy={cy} r={size * 0.075} fill={t.colors.bg.screen} />
+      </Svg>
+    </Animated.View>
   );
 }
 
 /* ── Progress ring ───────────────────────────────────────────────────────── */
 
-export function Ring({ progress, size = 64, stroke = 7, color, children }: {
-  progress: number; size?: number; stroke?: number; color?: string; children?: ReactNode;
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+export function Ring({ progress, size = 64, stroke = 7, color, animated = false, children }: {
+  progress: number; size?: number; stroke?: number; color?: string; animated?: boolean; children?: ReactNode;
 }) {
   const t = useTokens();
   const r = (size - stroke) / 2;
   const C = 2 * Math.PI * r;
+  const sweep = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!animated) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sweep, { toValue: 1, duration: 1300, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        Animated.timing(sweep, { toValue: 0, duration: 1300, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [animated, sweep]);
+  const dashoffset = sweep.interpolate({ inputRange: [0, 1], outputRange: [C, 0] });
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
       <Svg width={size} height={size} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
         <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={t.colors.bg.sunk} strokeWidth={stroke} />
-        <Circle
-          cx={size / 2} cy={size / 2} r={r} fill="none"
-          stroke={color ?? t.colors.accent.main} strokeWidth={stroke} strokeLinecap="round"
-          strokeDasharray={`${C}`} strokeDashoffset={C * (1 - Math.min(progress, 1))}
-        />
+        {animated ? (
+          <AnimatedCircle
+            cx={size / 2} cy={size / 2} r={r} fill="none"
+            stroke={color ?? t.colors.accent.main} strokeWidth={stroke} strokeLinecap="round"
+            strokeDasharray={`${C}`} strokeDashoffset={dashoffset}
+          />
+        ) : (
+          <Circle
+            cx={size / 2} cy={size / 2} r={r} fill="none"
+            stroke={color ?? t.colors.accent.main} strokeWidth={stroke} strokeLinecap="round"
+            strokeDasharray={`${C}`} strokeDashoffset={C * (1 - Math.min(progress, 1))}
+          />
+        )}
       </Svg>
       {children}
     </View>

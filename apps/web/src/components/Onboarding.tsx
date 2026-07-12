@@ -12,6 +12,7 @@ interface Page {
   script: string;
   body: string;
   visual: "mark" | "wheel" | "ring" | "dots";
+  starters?: string[];
 }
 
 const PAGES: Page[] = [
@@ -44,6 +45,7 @@ const PAGES: Page[] = [
     script: "Your turn",
     body: "Add whatever's on your mind — one task is enough to spin. The wheel takes it from there.",
     visual: "mark",
+    starters: ["Buy groceries", "Text a friend", "10-min walk"],
   },
 ];
 
@@ -52,10 +54,10 @@ const DEMO_SLICES = [1, 2, 3, 4, 5].map((n) => ({ id: `demo_${n}`, color: `var(-
 function PageVisual({ kind }: { kind: Page["visual"] }) {
   switch (kind) {
     case "wheel":
-      return <TaskWheel size={170} slices={DEMO_SLICES} />;
+      return <TaskWheel size={170} slices={DEMO_SLICES} idleSpin />;
     case "ring":
       return (
-        <Ring progress={0.35} size={150} stroke={11}>
+        <Ring progress={0.35} size={150} stroke={11} animated>
           <span style={{ fontVariantNumeric: "tabular-nums", fontSize: 30, fontWeight: 300, color: "var(--text-primary)" }}>16:12</span>
         </Ring>
       );
@@ -67,12 +69,14 @@ function PageVisual({ kind }: { kind: Page["visual"] }) {
               width: 22, height: 22, borderRadius: 999,
               background: f ? `var(--wheel-${(i % 6) + 1})` : "transparent",
               boxShadow: f ? "none" : "inset 0 0 0 2px var(--border-hairline)",
+              animation: "wt-pop-in 380ms var(--ease-out) both",
+              animationDelay: `${i * 80}ms`,
             }} />
           ))}
         </div>
       );
     default:
-      return <WheelMark size={86} spin />;
+      return <WheelMark size={86} spin hubColor="var(--bg-card)" />;
   }
 }
 
@@ -106,6 +110,20 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <p style={{ margin: 0, maxWidth: 330, fontSize: 15, fontWeight: 300, color: "var(--text-secondary)", lineHeight: 1.65 }}>
             {p.body}
           </p>
+          {p.starters && (
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, marginTop: 18, maxWidth: 330 }}>
+              {p.starters.map((s, i) => (
+                <span key={s} style={{
+                  fontSize: 13, fontWeight: 500, color: "var(--text-secondary)",
+                  background: "var(--bg-card)", border: "1px solid var(--border-hairline)",
+                  borderRadius: "var(--r-pill)", padding: "7px 14px",
+                  animation: "wt-pop-in 380ms var(--ease-out) both", animationDelay: `${i * 90}ms`,
+                }}>
+                  {s}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Dots + CTA */}
@@ -113,10 +131,15 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <div style={{ display: "flex", gap: 7 }}>
             {PAGES.map((_, i) => (
               <button key={i} onClick={() => setPage(i)} aria-label={`Page ${i + 1}`} style={{
-                width: i === page ? 22 : 8, height: 8, borderRadius: 999, border: "none", padding: 0, cursor: "pointer",
-                background: i === page ? "var(--accent)" : "var(--bg-sunk)",
-                transition: "all 220ms var(--ease-out)",
-              }} />
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 32, height: 32, border: "none", background: "none", padding: 0, cursor: "pointer",
+              }}>
+                <span style={{
+                  width: i === page ? 22 : 8, height: 8, borderRadius: 999,
+                  background: i === page ? "var(--accent)" : "var(--bg-sunk)",
+                  transition: "all 220ms var(--ease-out)",
+                }} />
+              </button>
             ))}
           </div>
           <SpinPill full onClick={() => (last ? onDone() : setPage(page + 1))}>

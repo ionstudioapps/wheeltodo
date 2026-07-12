@@ -220,16 +220,21 @@ export function ConfettiBurst({ active }: { active: boolean }) {
 
 /* ── Progress ring ───────────────────────────────────────────────────────── */
 
-export function Ring({ progress, size = 64, stroke = 7, color = "var(--accent)", children }: {
-  progress: number; size?: number; stroke?: number; color?: string; children?: ReactNode;
+export function Ring({ progress, size = 64, stroke = 7, color = "var(--accent)", animated = false, children }: {
+  progress: number; size?: number; stroke?: number; color?: string; animated?: boolean; children?: ReactNode;
 }) {
   const r = (size - stroke) / 2, C = 2 * Math.PI * r;
   return (
     <div style={{ position: "relative", width: size, height: size }}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--bg-sunk)" strokeWidth={stroke} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
-          strokeDasharray={C} strokeDashoffset={C * (1 - progress)} style={{ transition: "stroke-dashoffset 400ms var(--ease-out)" }} />
+        {animated ? (
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+            strokeDasharray={C} style={{ "--c": C, animation: "wt-ring-sweep 2.6s ease-in-out infinite" } as CSSProperties} />
+        ) : (
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+            strokeDasharray={C} strokeDashoffset={C * (1 - progress)} style={{ transition: "stroke-dashoffset 400ms var(--ease-out)" }} />
+        )}
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{children}</div>
     </div>
@@ -245,8 +250,8 @@ export interface WheelSlice {
   iconPaths?: string[];
 }
 
-export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, hub, onClick }: {
-  slices: WheelSlice[]; size?: number; rotation?: number; spinning?: boolean;
+export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, idleSpin = false, hub, onClick }: {
+  slices: WheelSlice[]; size?: number; rotation?: number; spinning?: boolean; idleSpin?: boolean;
   hub?: ReactNode; onClick?: () => void;   // tapping anywhere on the wheel spins it
 }) {
   const r = size / 2, cx = r, cy = r;
@@ -311,8 +316,9 @@ export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, 
       </div>
       <svg width={size} height={size} style={{
         marginTop: 10,
-        transform: `rotate(${rotation}deg)`,
+        transform: idleSpin ? undefined : `rotate(${rotation}deg)`,
         transition: spinning ? "transform 3600ms var(--ease-spin)" : "none",
+        animation: idleSpin ? "wt-idle-spin 22s linear infinite" : undefined,
         filter: "drop-shadow(0 10px 28px rgba(0,0,0,0.12))",
       }}>
         <circle cx={cx} cy={cy} r={r - 1} fill="var(--bg-card)" />
@@ -349,7 +355,7 @@ export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, 
 
 /* ── Small brand wheel mark (logo) ───────────────────────────────────────── */
 
-export function WheelMark({ size = 28, spin = false }: { size?: number; spin?: boolean }) {
+export function WheelMark({ size = 28, spin = false, hubColor = "var(--ink)" }: { size?: number; spin?: boolean; hubColor?: string }) {
   const cx = size / 2, cy = size / 2, r = size / 2 - 0.5;
   const paths = CONFETTI_VARS.map((v, i) => {
     const a0 = (i / 8) * Math.PI * 2 - Math.PI / 2;
@@ -362,7 +368,7 @@ export function WheelMark({ size = 28, spin = false }: { size?: number; spin?: b
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
       style={{ display: "block", animation: spin ? "wt-idle-spin 28s linear infinite" : undefined }}>
       {paths.map((p, i) => <path key={i} d={p.d} fill={`var(${p.v})`} />)}
-      <circle cx={cx} cy={cy} r={size * 0.21} fill="var(--ink)" />
+      <circle cx={cx} cy={cy} r={size * 0.21} fill={hubColor} />
       <circle cx={cx} cy={cy} r={size * 0.075} fill="var(--bg-screen)" />
     </svg>
   );

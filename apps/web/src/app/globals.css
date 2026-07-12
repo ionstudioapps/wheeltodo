@@ -339,6 +339,15 @@ button { font-family: inherit; }
 }
 @keyframes wt-screen-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes wt-idle-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes wt-ring-sweep {
+  0%   { stroke-dashoffset: var(--c); }
+  50%  { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: var(--c); }
+}
+@keyframes wt-pop-in {
+  0%   { opacity: 0; transform: scale(0.4); }
+  100% { opacity: 1; transform: scale(1); }
+}
 
 .wt-sheet   { animation: wt-slide-up 220ms var(--ease-out) both; }
 .wt-scrim   { animation: wt-fade-in 200ms ease-out both; }
