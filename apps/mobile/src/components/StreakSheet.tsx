@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { Flame } from 'lucide-react-native';
+import { Flame, Sparkles } from 'lucide-react-native';
 import { useApp, type RestTask } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
 import { SectionLabel, Sheet, cardShadow, useTokens } from './kit';
@@ -24,18 +24,15 @@ function QuickRestChip({ task, onToggle }: { task: RestTask; onToggle: () => voi
   const done = task.completedToday;
   const color = categoryColor(t, task.category);
   return (
-    <Pressable onPress={onToggle} accessibilityRole="button" accessibilityState={{ checked: done }} accessibilityLabel={`${task.name}, ${task.durationMinutes} minutes`} style={{
+    <Pressable onPress={onToggle} accessibilityRole="button" accessibilityState={{ checked: done }} accessibilityLabel={task.name} style={{
       flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 999,
-      paddingVertical: 9, paddingLeft: 10, paddingRight: 14,
+      paddingVertical: 9, paddingHorizontal: 14,
       backgroundColor: done ? color : t.colors.bg.card,
       ...(done ? {} : cardShadow(t.dark)),
     }}>
       <View style={{ width: 20, height: 20, borderRadius: 999, backgroundColor: done ? t.colors.bg.card : color, opacity: done ? 0.9 : 0.35 }} />
       <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 13.5, color: done ? t.colors.text.onInk : t.colors.text.primary }}>
         {task.name}
-      </Text>
-      <Text style={{ fontFamily: FONTS.sans, fontSize: 11.5, color: done ? t.colors.text.onInk : t.colors.text.muted, opacity: done ? 0.75 : 1 }}>
-        {task.durationMinutes}m
       </Text>
     </Pressable>
   );
@@ -45,6 +42,19 @@ export function StreakSheet({ onClose }: { onClose: () => void }) {
   const t = useTokens();
   const { streak, bestStreak, hasActivityToday, restTasks, toggleRestTask } = useApp();
   const quickRest = restTasks.filter((r) => r.isPreset);
+
+  const [justPreserved, setJustPreserved] = useState(false);
+  const preservedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleToggle(task: RestTask) {
+    const nowDone = !task.completedToday;
+    toggleRestTask(task.id);
+    if (nowDone && !hasActivityToday) {
+      setJustPreserved(true);
+      if (preservedTimer.current) clearTimeout(preservedTimer.current);
+      preservedTimer.current = setTimeout(() => setJustPreserved(false), 3000);
+    }
+  }
 
   return (
     <Sheet onClose={onClose}>
@@ -62,11 +72,20 @@ export function StreakSheet({ onClose }: { onClose: () => void }) {
         </View>
       </View>
 
-      <Text style={{ fontFamily: FONTS.sansLight, fontSize: 14, lineHeight: 21, color: t.colors.text.secondary, marginTop: 14 }}>
-        {hasActivityToday
-          ? 'Today already counts. The streak is safe.'
-          : 'Nothing logged yet today. A task keeps the streak going — and so does rest.'}
-      </Text>
+      {justPreserved ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: t.colors.softs.sage, borderRadius: 14, padding: 12, marginTop: 14 }}>
+          <Sparkles size={16} color={t.colors.action.success} strokeWidth={2.2} />
+          <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 14, color: t.colors.text.primary, flex: 1 }}>
+            Your streak is preserved for today.
+          </Text>
+        </View>
+      ) : (
+        <Text style={{ fontFamily: FONTS.sansLight, fontSize: 14, lineHeight: 21, color: t.colors.text.secondary, marginTop: 14 }}>
+          {hasActivityToday
+            ? 'Today already counts. The streak is safe.'
+            : 'Nothing logged yet today. A task keeps the streak going — and so does rest.'}
+        </Text>
+      )}
 
       <View style={{ marginTop: 20, paddingTop: 18, borderTopWidth: 1, borderTopColor: t.colors.hairline }}>
         <SectionLabel style={{ fontSize: 12, marginBottom: 4 }}>Quick rest</SectionLabel>
@@ -75,7 +94,7 @@ export function StreakSheet({ onClose }: { onClose: () => void }) {
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {quickRest.map((task) => (
-            <QuickRestChip key={task.id} task={task} onToggle={() => toggleRestTask(task.id)} />
+            <QuickRestChip key={task.id} task={task} onToggle={() => handleToggle(task)} />
           ))}
         </View>
       </View>

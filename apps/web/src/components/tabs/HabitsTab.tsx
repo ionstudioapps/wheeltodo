@@ -29,7 +29,10 @@ const STARTERS: { name: string; mins: number; cat: RestCategory }[] = [
 
 /* ── Heatmap (13 weeks, intensity = habits done that day) ────────────────── */
 
-function Heatmap({ countsByDay }: { countsByDay: Map<string, number> }) {
+// Each day is coloured by the habit that "owns" it — the first habit (in
+// list order) completed that day — rather than a generic intensity ramp, so
+// the heatmap reads as which habits are carrying the streak, not just how much.
+function Heatmap({ dayData }: { dayData: Map<string, { count: number; color: string }> }) {
   const cells = useMemo(() => {
     const WEEKS = 13;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -37,19 +40,19 @@ function Heatmap({ countsByDay }: { countsByDay: Map<string, number> }) {
     const gridEnd = new Date(today); gridEnd.setDate(today.getDate() - daysFromMonday + 6);
     const gridStart = new Date(gridEnd); gridStart.setDate(gridEnd.getDate() - WEEKS * 7 + 1);
 
-    const weeks: { level: number; future: boolean; label: string }[][] = [];
+    const weeks: { count: number; color?: string; future: boolean; label: string }[][] = [];
     for (let w = 0; w < WEEKS; w++) {
-      const col: { level: number; future: boolean; label: string }[] = [];
+      const col: { count: number; color?: string; future: boolean; label: string }[] = [];
       for (let d = 0; d < 7; d++) {
         const day = new Date(gridStart);
         day.setDate(gridStart.getDate() + w * 7 + d);
-        const n = countsByDay.get(day.toDateString()) ?? 0;
-        col.push({ level: Math.min(n, 4), future: day > today, label: day.toLocaleDateString() });
+        const entry = dayData.get(day.toDateString());
+        col.push({ count: entry?.count ?? 0, color: entry?.color, future: day > today, label: day.toLocaleDateString() });
       }
       weeks.push(col);
     }
     return weeks;
-  }, [countsByDay]);
+  }, [dayData]);
 
   return (
     <div style={{ display: "flex", gap: 5, justifyContent: "space-between" }}>
@@ -58,8 +61,8 @@ function Heatmap({ countsByDay }: { countsByDay: Map<string, number> }) {
           {col.map((c, d) => (
             <span key={d} title={c.label} style={{
               width: "100%", aspectRatio: "1", borderRadius: 4,
-              background: c.level === 0 ? "var(--bg-sunk)" : `var(--heat-${c.level})`,
-              opacity: c.future ? 0.25 : 1,
+              background: c.color ?? "var(--bg-sunk)",
+              opacity: c.future ? 0.25 : c.color ? Math.min(0.55 + c.count * 0.15, 1) : 1,
             }} />
           ))}
         </div>
@@ -170,10 +173,15 @@ export function HabitsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const countsByDay = useMemo(() => {
-    const map = new Map<string, number>();
+  const heatmapDayData = useMemo(() => {
+    const map = new Map<string, { count: number; color: string }>();
     habits.forEach((h) => {
-      (habitHistory[h.id] ?? []).forEach((d) => map.set(d, (map.get(d) ?? 0) + 1));
+      const color = h.color ?? `var(${categoryVar(h.category)})`;
+      (habitHistory[h.id] ?? []).forEach((d) => {
+        const existing = map.get(d);
+        if (existing) existing.count += 1;
+        else map.set(d, { count: 1, color });
+      });
     });
     return map;
   }, [habits, habitHistory]);
@@ -232,7 +240,7 @@ export function HabitsTab() {
 
         {/* Heatmap — always visible, including after finishing the day */}
         <div style={{ paddingTop: 24 }}>
-          <Heatmap countsByDay={countsByDay} />
+          <Heatmap dayData={heatmapDayData} />
         </div>
 
         {/* Stat cards */}

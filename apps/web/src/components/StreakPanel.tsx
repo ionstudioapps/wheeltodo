@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { useApp, type RestTask } from "@/context/AppContext";
 import { WIcon, Sheet, SectionLabel } from "@/components/ui/kit";
 
@@ -18,7 +19,7 @@ function QuickRestChip({ task, onToggle }: { task: RestTask; onToggle: () => voi
   return (
     <button onClick={onToggle} className="wt-press" style={{
       display: "inline-flex", alignItems: "center", gap: 7, borderRadius: "var(--r-tag)",
-      padding: "9px 14px 9px 10px", border: "none", cursor: "pointer",
+      padding: "9px 14px", border: "none", cursor: "pointer",
       background: done ? color : "var(--bg-card)",
       boxShadow: done ? "none" : "var(--shadow-card)",
     }}>
@@ -29,9 +30,6 @@ function QuickRestChip({ task, onToggle }: { task: RestTask; onToggle: () => voi
       <span style={{ fontSize: 13.5, fontWeight: 500, color: done ? "var(--text-on-ink)" : "var(--text-primary)", whiteSpace: "nowrap" }}>
         {task.name}
       </span>
-      <span style={{ fontSize: 11.5, color: done ? "var(--text-on-ink)" : "var(--text-muted)", opacity: done ? 0.75 : 1 }}>
-        {task.durationMinutes}m
-      </span>
     </button>
   );
 }
@@ -39,6 +37,19 @@ function QuickRestChip({ task, onToggle }: { task: RestTask; onToggle: () => voi
 export function StreakPanel({ onClose }: { onClose: () => void }) {
   const { streak, bestStreak, hasActivityToday, restTasks, toggleRestTask } = useApp();
   const quickRest = restTasks.filter((t) => t.isPreset);
+
+  const [justPreserved, setJustPreserved] = useState(false);
+  const preservedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleToggle(task: RestTask) {
+    const nowDone = !task.completedToday;
+    toggleRestTask(task.id);
+    if (nowDone && !hasActivityToday) {
+      setJustPreserved(true);
+      if (preservedTimer.current) clearTimeout(preservedTimer.current);
+      preservedTimer.current = setTimeout(() => setJustPreserved(false), 3000);
+    }
+  }
 
   return (
     <Sheet onClose={onClose}>
@@ -56,11 +67,20 @@ export function StreakPanel({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <p style={{ margin: "14px 0 0", fontSize: 14, fontWeight: 300, color: "var(--text-secondary)", lineHeight: 1.55 }}>
-        {hasActivityToday
-          ? "Today already counts. The streak is safe."
-          : "Nothing logged yet today. A task keeps the streak going — and so does rest."}
-      </p>
+      {justPreserved ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--c-sage-soft)", borderRadius: 14, padding: "12px 14px", marginTop: 14 }}>
+          <WIcon name="sparkle" size={16} color="var(--action-success)" />
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>
+            Your streak is preserved for today.
+          </p>
+        </div>
+      ) : (
+        <p style={{ margin: "14px 0 0", fontSize: 14, fontWeight: 300, color: "var(--text-secondary)", lineHeight: 1.55 }}>
+          {hasActivityToday
+            ? "Today already counts. The streak is safe."
+            : "Nothing logged yet today. A task keeps the streak going — and so does rest."}
+        </p>
+      )}
 
       <div style={{ margin: "20px 0 0", paddingTop: 18, borderTop: "1px solid var(--border-hairline)" }}>
         <SectionLabel style={{ margin: "0 0 4px", fontSize: 12 }}>Quick rest</SectionLabel>
@@ -69,7 +89,7 @@ export function StreakPanel({ onClose }: { onClose: () => void }) {
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {quickRest.map((task) => (
-            <QuickRestChip key={task.id} task={task} onToggle={() => toggleRestTask(task.id)} />
+            <QuickRestChip key={task.id} task={task} onToggle={() => handleToggle(task)} />
           ))}
         </div>
       </div>

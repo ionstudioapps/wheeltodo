@@ -38,7 +38,10 @@ function categoryColor(t: ReturnType<typeof useTokens>, cat: RestCategory) {
 
 /* ── Heatmap ─────────────────────────────────────────────────────────────── */
 
-function Heatmap({ countsByDay }: { countsByDay: Map<string, number> }) {
+// Each day is coloured by the habit that "owns" it — the first habit (in
+// list order) completed that day — rather than a generic intensity ramp, so
+// the heatmap reads as which habits are carrying the streak, not just how much.
+function Heatmap({ dayData }: { dayData: Map<string, { count: number; color: string }> }) {
   const t = useTokens();
   const { width } = useWindowDimensions();
   const WEEKS = 13;
@@ -50,19 +53,19 @@ function Heatmap({ countsByDay }: { countsByDay: Map<string, number> }) {
     const daysFromMonday = today.getDay() === 0 ? 6 : today.getDay() - 1;
     const gridEnd = new Date(today); gridEnd.setDate(today.getDate() - daysFromMonday + 6);
     const gridStart = new Date(gridEnd); gridStart.setDate(gridEnd.getDate() - WEEKS * 7 + 1);
-    const out: { level: number; future: boolean }[][] = [];
+    const out: { count: number; color?: string; future: boolean }[][] = [];
     for (let w = 0; w < WEEKS; w++) {
-      const col: { level: number; future: boolean }[] = [];
+      const col: { count: number; color?: string; future: boolean }[] = [];
       for (let d = 0; d < 7; d++) {
         const day = new Date(gridStart);
         day.setDate(gridStart.getDate() + w * 7 + d);
-        const n = countsByDay.get(day.toDateString()) ?? 0;
-        col.push({ level: Math.min(n, 4), future: day > today });
+        const entry = dayData.get(day.toDateString());
+        col.push({ count: entry?.count ?? 0, color: entry?.color, future: day > today });
       }
       out.push(col);
     }
     return out;
-  }, [countsByDay]);
+  }, [dayData]);
 
   return (
     <View style={{ flexDirection: 'row', gap, justifyContent: 'space-between' }}>
@@ -71,8 +74,8 @@ function Heatmap({ countsByDay }: { countsByDay: Map<string, number> }) {
           {col.map((c, d) => (
             <View key={d} style={{
               width: cell, height: cell, borderRadius: 4,
-              backgroundColor: c.level === 0 ? t.colors.bg.sunk : t.colors.heat[c.level - 1],
-              opacity: c.future ? 0.25 : 1,
+              backgroundColor: c.color ?? t.colors.bg.sunk,
+              opacity: c.future ? 0.25 : c.color ? Math.min(0.55 + c.count * 0.15, 1) : 1,
             }} />
           ))}
         </View>
@@ -197,13 +200,18 @@ export function HabitsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const countsByDay = useMemo(() => {
-    const map = new Map<string, number>();
+  const heatmapDayData = useMemo(() => {
+    const map = new Map<string, { count: number; color: string }>();
     habits.forEach((h) => {
-      (habitHistory[h.id] ?? []).forEach((d) => map.set(d, (map.get(d) ?? 0) + 1));
+      const color = categoryColor(t, h.category);
+      (habitHistory[h.id] ?? []).forEach((d) => {
+        const existing = map.get(d);
+        if (existing) existing.count += 1;
+        else map.set(d, { count: 1, color });
+      });
     });
     return map;
-  }, [habits, habitHistory]);
+  }, [habits, habitHistory, t]);
 
   const weekFor = (id: string) => {
     const dates = new Set(habitHistory[id] ?? []);
@@ -263,7 +271,7 @@ export function HabitsScreen() {
 
         {/* Heatmap — always visible, including after finishing the day */}
         <View style={{ paddingTop: allDone ? 0 : 24 }}>
-          <Heatmap countsByDay={countsByDay} />
+          <Heatmap dayData={heatmapDayData} />
         </View>
 
         {/* Stat cards */}
