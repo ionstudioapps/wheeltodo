@@ -551,7 +551,7 @@ export function TasksScreen() {
       >
         {/* Headline */}
         <View style={{ paddingTop: 10 }}>
-          <Headline lead="Not sure where to start?" script="Spin" size={56} />
+          <Headline lead="Not sure where to start?" script="Spin" size={62} />
         </View>
 
         {/* Sunday recap prompt */}
@@ -779,7 +779,7 @@ export function TasksScreen() {
       {/* Spin limit sheet */}
       {limitOpen && (
         <Sheet onClose={() => setLimitOpen(false)}>
-          <Text style={{ fontFamily: FONTS.display, fontSize: 52, lineHeight: 56, color: t.colors.text.primary, marginBottom: 14, marginLeft: -3, paddingLeft: 3 }}>
+          <Text style={{ fontFamily: FONTS.display, fontSize: 58, lineHeight: 62, color: t.colors.text.primary, marginBottom: 14, marginLeft: -9, paddingLeft: 9 }}>
             5 spins{'\n'}<Text style={{ color: t.colors.accent.main }}>done.</Text>
           </Text>
           <Text style={{ fontFamily: FONTS.sansLight, fontSize: 16, lineHeight: 24, color: t.colors.text.secondary, marginBottom: 24 }}>

@@ -198,7 +198,7 @@ export function YouTab({ user, onSignOut }: YouTabProps) {
       {/* Hero */}
       <div style={{ paddingTop: 10, marginBottom: 30 }}>
         <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 300, color: "var(--text-secondary)", letterSpacing: "0.01em" }}>Hello,</p>
-        <p className="script" style={{ marginTop: 0, marginRight: 0, marginBottom: 0, fontFamily: "var(--font-display)", fontSize: 64, lineHeight: 0.85, color: "var(--text-primary)" }}>
+        <p className="script" style={{ marginTop: 0, marginRight: 0, marginBottom: 0, fontFamily: "var(--font-display)", fontSize: 70, lineHeight: 0.85, color: "var(--text-primary)" }}>
           {heroName}<span style={{ color: "var(--accent)" }}>.</span>
         </p>
       </div>

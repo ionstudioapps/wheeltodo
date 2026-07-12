@@ -130,7 +130,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <PageVisual key={page} kind={p.visual} />
           </View>
           <Text style={{ fontFamily: FONTS.sansLight, fontSize: 16, color: t.colors.text.secondary, marginBottom: 4 }}>{p.lead}</Text>
-          <Text style={{ fontFamily: FONTS.display, fontSize: 56, lineHeight: 64, color: t.colors.text.primary, marginBottom: 14, marginLeft: -3, paddingLeft: 3 }}>
+          <Text style={{ fontFamily: FONTS.display, fontSize: 62, lineHeight: 70, color: t.colors.text.primary, marginBottom: 14, marginLeft: -9, paddingLeft: 9 }}>
             {p.script}<Text style={{ color: t.colors.accent.main }}>.</Text>
           </Text>
           <Text style={{ fontFamily: FONTS.sansLight, fontSize: 15, lineHeight: 24, color: t.colors.text.secondary, textAlign: 'center', maxWidth: 330 }}>

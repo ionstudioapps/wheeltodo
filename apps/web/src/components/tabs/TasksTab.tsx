@@ -731,9 +731,9 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
           {/* Headline */}
           <div style={{ paddingTop: 10 }}>
             {todayCompleted.length > 0 && tasks.length === 0 ? (
-              <Headline lead="Done. On to the next." script="Nice work" size={50} />
+              <Headline lead="Done. On to the next." script="Nice work" size={54} />
             ) : (
-              <Headline lead="Not sure where to start?" script="Spin" size={58} />
+              <Headline lead="Not sure where to start?" script="Spin" size={62} />
             )}
           </div>
 
@@ -943,7 +943,7 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
       {/* Spin limit sheet (Seed) */}
       {limitOpen && (
         <Sheet onClose={() => setLimitOpen(false)}>
-          <div className="script" style={{ fontFamily: "var(--font-display)", fontSize: 56, lineHeight: 0.88, color: "var(--text-primary)", marginBottom: 14 }}>
+          <div className="script" style={{ fontFamily: "var(--font-display)", fontSize: 60, lineHeight: 0.88, color: "var(--text-primary)", marginBottom: 14 }}>
             5 spins<br /><span style={{ color: "var(--accent)" }}>done.</span>
           </div>
           <p style={{ margin: "0 0 24px", fontSize: 16, color: "var(--text-secondary)", fontWeight: 300, lineHeight: 1.55 }}>

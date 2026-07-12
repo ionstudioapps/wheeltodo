@@ -121,7 +121,7 @@ export function UpgradeScreen({ onClose, onActivate }: { onClose: () => void; on
           <WIcon name="chevronL" size={20} stroke={2.5} color="var(--c-lavender)" />
           <span style={{ fontSize: 14, color: "var(--c-lavender)", fontWeight: 600 }}>Back</span>
         </button>
-        <div className="script" style={{ fontFamily: "var(--font-display)", fontSize: 52, lineHeight: 0.88, color: "var(--text-primary)", marginTop: 16, marginBottom: 22 }}>
+        <div className="script" style={{ fontFamily: "var(--font-display)", fontSize: 56, lineHeight: 0.88, color: "var(--text-primary)", marginTop: 16, marginBottom: 22 }}>
           More with<br /><span style={{ color: "var(--c-lavender)" }}>Bloom.</span>
         </div>
         {featureList}
@@ -138,7 +138,7 @@ export function UpgradeScreen({ onClose, onActivate }: { onClose: () => void; on
               <WheelMark size={30} />
               <span style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>WheelToDo</span>
             </div>
-            <div className="script" style={{ fontFamily: "var(--font-display)", fontSize: 76, lineHeight: 0.88, color: "var(--text-primary)", marginBottom: 18 }}>
+            <div className="script" style={{ fontFamily: "var(--font-display)", fontSize: 82, lineHeight: 0.88, color: "var(--text-primary)", marginBottom: 18 }}>
               More with<br /><span style={{ color: "var(--c-lavender)" }}>Bloom.</span>
             </div>
             <p style={{ margin: 0, fontSize: 16, color: "var(--text-secondary)", fontWeight: 300, lineHeight: 1.6 }}>

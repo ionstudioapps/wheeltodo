@@ -48,16 +48,17 @@ export function CategoryIcon({ id, size = 20, color }: { id: string; size?: numb
 
 /* ── Headline: quiet lead-in + Ephesis payoff with accent period ─────────── */
 
-export function Headline({ lead, script, size = 52, align = 'left' }: {
+export function Headline({ lead, script, size = 58, align = 'left' }: {
   lead: string; script: string; size?: number; align?: 'left' | 'center';
 }) {
   const t = useTokens();
+  const swash = size * 0.15;
   return (
     <View style={{ alignItems: align === 'center' ? 'center' : 'flex-start' }}>
       <Text style={{ fontFamily: FONTS.sansLight, fontSize: 18, color: t.colors.text.secondary, letterSpacing: 0.2 }}>
         {lead}
       </Text>
-      <Text style={{ fontFamily: FONTS.display, fontSize: size, lineHeight: size * 1.08, marginTop: 2, marginLeft: -3, paddingLeft: 3, color: t.colors.text.primary }}>
+      <Text style={{ fontFamily: FONTS.display, fontSize: size, lineHeight: size * 1.08, marginTop: 2, marginLeft: -swash, paddingLeft: swash, color: t.colors.text.primary }}>
         {script}<Text style={{ color: t.colors.accent.main }}>.</Text>
       </Text>
     </View>

@@ -78,7 +78,7 @@ export const TASK_CATEGORIES: { id: string; label: string }[] = [
 
 /* ── Headline: quiet lead-in + Ephesis script payoff with accent period ───── */
 
-export function Headline({ lead, script, size = 58, align = "left" }: {
+export function Headline({ lead, script, size = 64, align = "left" }: {
   lead: string; script: string; size?: number; align?: "left" | "center";
 }) {
   return (

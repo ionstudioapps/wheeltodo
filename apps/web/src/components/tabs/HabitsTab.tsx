@@ -226,11 +226,11 @@ export function HabitsTab() {
 
       <div style={{ position: "relative", zIndex: 2, paddingTop: 10 }}>
         {allDone ? (
-          <Headline lead={`All ${habits.length === 3 ? "three" : habits.length}, done.`} script="See you tomorrow" size={42} />
+          <Headline lead={`All ${habits.length === 3 ? "three" : habits.length}, done.`} script="See you tomorrow" size={46} />
         ) : doneToday > 0 ? (
-          <Headline lead="Nice. Keep going." script="Show up" size={52} />
+          <Headline lead="Nice. Keep going." script="Show up" size={56} />
         ) : (
-          <Headline lead="Show up." script="Every day" size={56} />
+          <Headline lead="Show up." script="Every day" size={60} />
         )}
 
         {/* All-done ring */}

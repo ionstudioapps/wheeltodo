@@ -171,7 +171,7 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
       <div className="wt-desktop-only" style={{ flex: "0 0 50%", background: "var(--accent-soft)", position: "relative", padding: "44px 52px", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <Wordmark />
         <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 26 }}>
-          <Headline lead="Beat decision paralysis." script="Spin" size={92} />
+          <Headline lead="Beat decision paralysis." script="Spin" size={96} />
           <p style={{ margin: 0, maxWidth: 360, fontSize: 17, fontWeight: 300, lineHeight: 1.55, color: "var(--ink-soft)" }}>
             Put your tasks on the wheel, let it choose, and drop straight into focus.
             Rest days count too — momentum never breaks.
@@ -191,7 +191,7 @@ export function AuthPage({ onAuthenticated }: AuthPageProps) {
           <Headline
             lead={mode === "login" ? (usePw ? "Good to see you again." : "No password to forget.") : "A few small things at a time."}
             script={mode === "login" ? (usePw ? "Welcome" : "Just you") : "Hello"}
-            size={56}
+            size={60}
           />
           <div style={{ height: 24 }} />
           {form}

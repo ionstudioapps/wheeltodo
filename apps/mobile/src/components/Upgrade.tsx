@@ -130,7 +130,7 @@ const styles = (t: ReturnType<typeof useTokens>) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: t.colors.bg.screen },
   back: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 16, paddingVertical: 8, alignSelf: 'flex-start' },
   backText: { fontFamily: FONTS.sansSemi, fontSize: 14, color: t.colors.lavender },
-  headline: { fontFamily: FONTS.display, fontSize: 52, lineHeight: 56, color: t.colors.text.primary, marginTop: 10, marginBottom: 22, marginLeft: -3, paddingLeft: 3 },
+  headline: { fontFamily: FONTS.display, fontSize: 58, lineHeight: 62, color: t.colors.text.primary, marginTop: 10, marginBottom: 22, marginLeft: -9, paddingLeft: 9 },
   checkBadge: { width: 26, height: 26, borderRadius: 999, backgroundColor: t.colors.softs.lavender, alignItems: 'center', justifyContent: 'center' },
   featureText: { fontFamily: FONTS.sans, fontSize: 15.5, lineHeight: 21, color: t.colors.text.primary, flex: 1 },
   billingWrap: { backgroundColor: t.colors.bg.sunk, borderRadius: 100, padding: 4, flexDirection: 'row', marginBottom: 14 },
