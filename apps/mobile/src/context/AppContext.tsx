@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { getSupabaseClient, dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted, dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings, dbSetHabitDay } from '@todo/shared';
 import type { ThemeName } from '@todo/shared/themes';
 import { ACHIEVEMENT_DEFS, getUnlockedTierIds, type AchievementValues } from '../utils/achievements';
+import { syncScheduledNotifications } from '../utils/notifications';
 
 export interface Task {
   id: string;
@@ -677,6 +678,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCloudLoading(true);
     refreshFromCloud().finally(() => setCloudLoading(false));
   }, [supabaseUserId, loaded, refreshFromCloud]);
+
+  // Keep OS-scheduled notifications (daily nudge, weekly recap) in step with
+  // the toggles. No-ops in Expo Go, where scheduling isn't available.
+  useEffect(() => {
+    if (!loaded) return;
+    syncScheduledNotifications(notifPrefs).catch(() => {});
+  }, [notifPrefs, loaded]);
 
   // Sync settings whenever they change
   useEffect(() => {

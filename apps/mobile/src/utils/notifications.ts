@@ -131,3 +131,71 @@ export async function dismissPomodoroNotification(): Promise<void> {
   if (!Notifications) return;
   await Notifications.dismissNotificationAsync(POMODORO_NOTIF_ID).catch(() => {});
 }
+
+// ─── Focus complete ───────────────────────────────────────────────────────────
+
+export async function showFocusCompleteNotification(taskName: string, minutes: number): Promise<void> {
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+  const granted = await ensureNotificationPermission(Notifications);
+  if (!granted) return;
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Nice one.',
+      body: `${taskName} · ${minutes} min.`,
+      data: { type: 'focus-complete' },
+    },
+    trigger: null,
+  }).catch(() => {});
+}
+
+// ─── Scheduled notifications (daily nudge + weekly recap) ─────────────────────
+
+const NUDGE_ID = 'daily-nudge';
+const RECAP_ID = 'weekly-recap';
+
+/** Reconcile the OS-scheduled notifications with the in-app toggles. */
+export async function syncScheduledNotifications(prefs: { nudge: boolean; recap: boolean }): Promise<void> {
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  await Notifications.cancelScheduledNotificationAsync(NUDGE_ID).catch(() => {});
+  await Notifications.cancelScheduledNotificationAsync(RECAP_ID).catch(() => {});
+  if (!prefs.nudge && !prefs.recap) return;
+
+  const granted = await ensureNotificationPermission(Notifications);
+  if (!granted) return;
+
+  if (prefs.nudge) {
+    await Notifications.scheduleNotificationAsync({
+      identifier: NUDGE_ID,
+      content: {
+        title: 'The wheel is ready when you are.',
+        body: 'One small task still counts today.',
+        data: { type: 'nudge' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: 18,
+        minute: 0,
+      },
+    }).catch(() => {});
+  }
+
+  if (prefs.recap) {
+    await Notifications.scheduleNotificationAsync({
+      identifier: RECAP_ID,
+      content: {
+        title: 'Your week, wrapped.',
+        body: 'See what you finished this week.',
+        data: { type: 'recap' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+        weekday: 1, // Sunday
+        hour: 18,
+        minute: 0,
+      },
+    }).catch(() => {});
+  }
+}

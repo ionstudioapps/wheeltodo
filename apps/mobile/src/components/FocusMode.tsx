@@ -6,6 +6,7 @@ import { ArrowLeft, Check, Clock } from 'lucide-react-native';
 import { useApp } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
 import { ConfettiBurst, Ring, SpinPill, Toggle, formatMmSs, useTokens } from './kit';
+import { dismissPomodoroNotification, showFocusCompleteNotification, showPomodoroNotification } from '../utils/notifications';
 
 /* Focus Mode — a simple countdown session.
    Pre-start (Show timer + Study Double) → session (ring countdown) → complete. */
@@ -19,7 +20,7 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
   const insets = useSafeAreaInsets();
   const {
     pomodoroSession, pausePomodoro, resumePomodoro, completePomodoro, cancelPomodoro, tickPomodoro,
-    resumedSession, consumeResumedSession,
+    resumedSession, consumeResumedSession, notifPrefs,
   } = useApp();
 
   const [phase, setPhase] = useState<Phase>('prestart');
@@ -73,6 +74,11 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
     if (doneRef.current) return;
     doneRef.current = true;
     setConfetti(true);
+    void dismissPomodoroNotification();
+    if (notifPrefs.focus) {
+      const spentMin = Math.max(1, Math.round(((pomodoroSession?.totalSeconds ?? 0) - (pomodoroSession?.remainingSeconds ?? 0)) / 60));
+      void showFocusCompleteNotification(taskNameRef.current, spentMin);
+    }
     completePomodoro();
     setPhase('complete');
   }
@@ -81,6 +87,19 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
     if (visible && phase === 'session' && pomodoroSession?.remainingSeconds === 0) finish();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, phase, pomodoroSession?.remainingSeconds]);
+
+  // Live sticky notification with the remaining time, refreshed once a minute
+  // (no-op in Expo Go). Dismissed on pause/leave/finish.
+  const remainingMin = Math.floor((pomodoroSession?.remainingSeconds ?? 0) / 60);
+  useEffect(() => {
+    if (!visible || phase !== 'session' || !pomodoroSession?.isRunning || !notifPrefs.focus) return;
+    void showPomodoroNotification(taskNameRef.current, pomodoroSession.remainingSeconds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, phase, pomodoroSession?.isRunning, remainingMin, notifPrefs.focus]);
+  useEffect(() => {
+    if (phase === 'session' && pomodoroSession?.isRunning) return;
+    void dismissPomodoroNotification();
+  }, [phase, pomodoroSession?.isRunning]);
 
   function begin() {
     const url = studyUrl.trim();
@@ -202,7 +221,7 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
                   <Text style={s.abandonTitle}>Leave session?</Text>
                   <Text style={s.abandonBody}>The session won&apos;t count toward today.</Text>
                   <SpinPill full onPress={() => setShowAbandon(false)}>Keep going.</SpinPill>
-                  <Pressable onPress={() => { setShowAbandon(false); cancelPomodoro(); onDone(false); }} style={{ paddingVertical: 14, alignItems: 'center' }}>
+                  <Pressable onPress={() => { setShowAbandon(false); void dismissPomodoroNotification(); cancelPomodoro(); onDone(false); }} style={{ paddingVertical: 14, alignItems: 'center' }}>
                     <Text style={{ fontFamily: FONTS.sans, fontSize: 14, color: t.colors.text.secondary }}>Leave</Text>
                   </Pressable>
                 </View>
