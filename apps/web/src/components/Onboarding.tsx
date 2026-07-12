@@ -100,7 +100,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <PageVisual kind={p.visual} />
           </div>
           <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 300, color: "var(--text-secondary)" }}>{p.lead}</p>
-          <p className="script" style={{ margin: "0 0 18px", fontFamily: "var(--font-display)", fontSize: 58, lineHeight: 0.95, color: "var(--text-primary)" }}>
+          <p className="script" style={{ marginBottom: 18, fontFamily: "var(--font-display)", fontSize: 58, lineHeight: 0.95, color: "var(--text-primary)" }}>
             {p.script}<span style={{ color: "var(--accent)" }}>.</span>
           </p>
           <p style={{ margin: 0, maxWidth: 330, fontSize: 15, fontWeight: 300, color: "var(--text-secondary)", lineHeight: 1.65 }}>

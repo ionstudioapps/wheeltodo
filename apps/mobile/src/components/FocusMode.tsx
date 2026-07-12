@@ -248,7 +248,7 @@ export function FocusMode({ visible, onDone }: { visible: boolean; onDone: (comp
 const styles = (t: ReturnType<typeof useTokens>) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: t.colors.bg.screen },
   pad: { paddingHorizontal: 24 },
-  eyebrow: { fontFamily: FONTS.display, fontSize: 26, color: t.colors.accent.main, marginTop: 6, marginBottom: 2, paddingLeft: 3 },
+  eyebrow: { fontFamily: FONTS.display, fontSize: 26, color: t.colors.accent.main, marginTop: 6, marginBottom: 2, marginLeft: -3, paddingLeft: 3 },
   taskTitle: { fontFamily: FONTS.sansSemi, fontSize: 22, lineHeight: 28, color: t.colors.text.primary, marginBottom: 14 },
   sessionTask: { fontFamily: FONTS.sansMedium, fontSize: 16, color: t.colors.text.primary },
   durBadge: {

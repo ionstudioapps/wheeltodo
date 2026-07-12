@@ -109,7 +109,7 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
               <button onClick={() => { cancelPomodoro(); onDone(false); }} aria-label="Back" style={{ background: "none", border: "none", cursor: "pointer", padding: "8px 8px 8px 0", color: "var(--text-secondary)" }}>
                 <WIcon name="arrowL" size={20} />
               </button>
-              <p className="script" style={{ margin: "6px 0 0", paddingLeft: 3, fontFamily: "var(--font-display)", fontSize: 26, color: "var(--accent)" }}>Focus on</p>
+              <p className="script" style={{ marginTop: 6, fontFamily: "var(--font-display)", fontSize: 26, color: "var(--accent)" }}>Focus on</p>
               <p style={{ margin: "2px 0 14px", fontSize: 22, fontWeight: 600, lineHeight: 1.25, color: "var(--text-primary)", overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{pomodoroSession?.taskName}</p>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--bg-card)", border: "1px solid var(--border-hairline)", borderRadius: "var(--r-pill)", padding: "5px 12px" }}>
                 <WIcon name="clock" size={13} color="var(--text-secondary)" />
@@ -150,7 +150,7 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "36px 24px 0", flexShrink: 0, gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p className="script" style={{ margin: "0 0 1px", fontFamily: "var(--font-display)", fontSize: 20, color: "var(--accent)" }}>Focus on</p>
+                <p className="script" style={{ marginBottom: 1, fontFamily: "var(--font-display)", fontSize: 20, color: "var(--accent)" }}>Focus on</p>
                 <p style={{ margin: 0, fontSize: 16, fontWeight: 500, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {pomodoroSession?.taskName}
                 </p>

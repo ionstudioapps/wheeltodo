@@ -150,7 +150,7 @@ const styles = (t: ReturnType<typeof useTokens>) => StyleSheet.create({
   close: { width: 36, height: 36, borderRadius: 999, backgroundColor: t.colors.bg.sunk, alignItems: 'center', justifyContent: 'center' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 0 },
   lead: { fontFamily: FONTS.sansLight, fontSize: 16, color: t.colors.text.secondary, marginBottom: 3 },
-  script: { fontFamily: FONTS.display, fontSize: 56, lineHeight: 70, color: t.colors.text.primary, marginBottom: 18 },
+  script: { fontFamily: FONTS.display, fontSize: 56, lineHeight: 70, color: t.colors.text.primary, marginBottom: 18, marginLeft: -3, paddingLeft: 3 },
   body: { fontFamily: FONTS.sansLight, fontSize: 15, lineHeight: 23, color: t.colors.text.secondary, textAlign: 'center', maxWidth: 280, marginBottom: 30 },
   findLine: { fontFamily: FONTS.sansLight, fontSize: 15, color: t.colors.text.secondary, textAlign: 'center', marginTop: 12, fontVariant: ['tabular-nums'] },
   bubbleNum: { fontFamily: FONTS.sansSemi, fontSize: 30, color: t.colors.bg.card, fontVariant: ['tabular-nums'] },

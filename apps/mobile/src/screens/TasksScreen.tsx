@@ -779,7 +779,7 @@ export function TasksScreen() {
       {/* Spin limit sheet */}
       {limitOpen && (
         <Sheet onClose={() => setLimitOpen(false)}>
-          <Text style={{ fontFamily: FONTS.display, fontSize: 52, lineHeight: 56, color: t.colors.text.primary, marginBottom: 14 }}>
+          <Text style={{ fontFamily: FONTS.display, fontSize: 52, lineHeight: 56, color: t.colors.text.primary, marginBottom: 14, marginLeft: -3, paddingLeft: 3 }}>
             5 spins{'\n'}<Text style={{ color: t.colors.accent.main }}>done.</Text>
           </Text>
           <Text style={{ fontFamily: FONTS.sansLight, fontSize: 16, lineHeight: 24, color: t.colors.text.secondary, marginBottom: 24 }}>

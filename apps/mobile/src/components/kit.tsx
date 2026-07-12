@@ -57,7 +57,7 @@ export function Headline({ lead, script, size = 52, align = 'left' }: {
       <Text style={{ fontFamily: FONTS.sansLight, fontSize: 18, color: t.colors.text.secondary, letterSpacing: 0.2 }}>
         {lead}
       </Text>
-      <Text style={{ fontFamily: FONTS.display, fontSize: size, lineHeight: size * 1.08, marginTop: 2, color: t.colors.text.primary }}>
+      <Text style={{ fontFamily: FONTS.display, fontSize: size, lineHeight: size * 1.08, marginTop: 2, marginLeft: -3, paddingLeft: 3, color: t.colors.text.primary }}>
         {script}<Text style={{ color: t.colors.accent.main }}>.</Text>
       </Text>
     </View>

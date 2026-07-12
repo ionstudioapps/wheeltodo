@@ -54,7 +54,7 @@ function AuthSheet({ onClose }: { onClose: () => void }) {
       <Text style={{ fontFamily: FONTS.sansLight, fontSize: 16, color: t.colors.text.secondary }}>
         {mode === 'login' ? 'Pick up where you left off.' : 'A few small things at a time.'}
       </Text>
-      <Text style={{ fontFamily: FONTS.display, fontSize: 54, lineHeight: 66, color: t.colors.text.primary, marginBottom: 18 }}>
+      <Text style={{ fontFamily: FONTS.display, fontSize: 54, lineHeight: 66, color: t.colors.text.primary, marginBottom: 18, marginLeft: -3, paddingLeft: 3 }}>
         {mode === 'login' ? 'Welcome' : 'Hello'}<Text style={{ color: t.colors.accent.main }}>.</Text>
       </Text>
 
@@ -130,7 +130,7 @@ export function YouScreen() {
         {/* Hero */}
         <View style={{ paddingTop: 10, marginBottom: 26 }}>
           <Text style={{ fontFamily: FONTS.sansLight, fontSize: 16, color: t.colors.text.secondary, marginBottom: 2 }}>Hello,</Text>
-          <Text style={{ fontFamily: FONTS.display, fontSize: 58, lineHeight: 66, color: t.colors.text.primary }}>
+          <Text style={{ fontFamily: FONTS.display, fontSize: 58, lineHeight: 66, color: t.colors.text.primary, marginLeft: -3, paddingLeft: 3 }}>
             {heroName}<Text style={{ color: t.colors.accent.main }}>.</Text>
           </Text>
         </View>

@@ -84,7 +84,7 @@ export function Headline({ lead, script, size = 58, align = "left" }: {
   return (
     <div style={{ textAlign: align }}>
       <p style={{ margin: 0, fontSize: 19, fontWeight: 300, color: "var(--text-secondary)", letterSpacing: "0.01em" }}>{lead}</p>
-      <p className="script" style={{ margin: "2px 0 0", fontFamily: "var(--font-display)", fontWeight: 400, fontSize: size, lineHeight: 0.9, color: "var(--text-primary)" }}>
+      <p className="script" style={{ marginTop: 2, fontFamily: "var(--font-display)", fontWeight: 400, fontSize: size, lineHeight: 0.9, color: "var(--text-primary)" }}>
         {script}<span style={{ color: "var(--accent)" }}>.</span>
       </p>
     </div>

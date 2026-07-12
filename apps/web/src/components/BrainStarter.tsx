@@ -74,7 +74,7 @@ export function BrainStarter({ onClose, onFinished }: { onClose: () => void; onF
         {phase === "intro" && (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", textAlign: "center", gap: 0 }}>
             <p style={{ margin: "0 0 3px", fontSize: 16, fontWeight: 300, color: "var(--text-secondary)" }}>Ease into the day.</p>
-            <p className="script" style={{ margin: "0 0 22px", fontFamily: "var(--font-display)", fontSize: 58, lineHeight: 0.9, color: "var(--text-primary)" }}>
+            <p className="script" style={{ marginBottom: 22, fontFamily: "var(--font-display)", fontSize: 58, lineHeight: 0.9, color: "var(--text-primary)" }}>
               Wake up<span style={{ color: "var(--accent)" }}>.</span>
             </p>
             <p style={{ margin: "0 auto 30px", maxWidth: 280, fontSize: 15, fontWeight: 300, color: "var(--text-secondary)", lineHeight: 1.55 }}>
@@ -117,7 +117,7 @@ export function BrainStarter({ onClose, onFinished }: { onClose: () => void; onF
         {phase === "done" && (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", textAlign: "center" }}>
             <p style={{ margin: "0 0 3px", fontSize: 16, fontWeight: 300, color: "var(--text-secondary)" }}>All {COUNT}, in {seconds} seconds.</p>
-            <p className="script" style={{ margin: "0 0 22px", fontFamily: "var(--font-display)", fontSize: 58, lineHeight: 0.9, color: "var(--accent)" }}>
+            <p className="script" style={{ marginBottom: 22, fontFamily: "var(--font-display)", fontSize: 58, lineHeight: 0.9, color: "var(--accent)" }}>
               Brain awake.
             </p>
             <p style={{ margin: "0 auto 30px", maxWidth: 280, fontSize: 15, fontWeight: 300, color: "var(--text-secondary)", lineHeight: 1.55 }}>

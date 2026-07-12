@@ -121,7 +121,7 @@ export function UpgradeScreen({ onClose, onActivate }: { onClose: () => void; on
           <WIcon name="chevronL" size={20} stroke={2.5} color="var(--c-lavender)" />
           <span style={{ fontSize: 14, color: "var(--c-lavender)", fontWeight: 600 }}>Back</span>
         </button>
-        <div className="script" style={{ fontFamily: "var(--font-display)", fontSize: 52, lineHeight: 0.88, color: "var(--text-primary)", margin: "16px 0 22px" }}>
+        <div className="script" style={{ fontFamily: "var(--font-display)", fontSize: 52, lineHeight: 0.88, color: "var(--text-primary)", marginTop: 16, marginBottom: 22 }}>
           More with<br /><span style={{ color: "var(--c-lavender)" }}>Bloom.</span>
         </div>
         {featureList}

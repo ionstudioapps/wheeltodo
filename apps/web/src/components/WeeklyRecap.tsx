@@ -74,7 +74,7 @@ export function WeeklyRecap({ onClose }: { onClose: () => void }) {
 
       <div style={{ padding: "54px 22px 36px", position: "relative", zIndex: 1, height: "100%", overflowY: "auto", maxWidth: 560, margin: "0 auto" }}>
         <p style={{ margin: "0 0 3px", fontSize: 13.5, fontWeight: 300, color: "var(--text-secondary)", letterSpacing: "0.04em" }}>{rangeLabel}</p>
-        <div className="script" style={{ margin: "0 0 24px", fontFamily: "var(--font-display)", fontSize: 64, lineHeight: 0.88, color: "var(--text-primary)" }}>
+        <div className="script" style={{ marginBottom: 24, fontFamily: "var(--font-display)", fontSize: 64, lineHeight: 0.88, color: "var(--text-primary)" }}>
           This<br /><span style={{ color: "var(--accent)" }}>week.</span>
         </div>
 

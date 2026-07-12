@@ -146,7 +146,7 @@ const styles = (t: ReturnType<typeof useTokens>) => StyleSheet.create({
     backgroundColor: t.colors.bg.sunk, alignItems: 'center', justifyContent: 'center',
   },
   range: { fontFamily: FONTS.sansLight, fontSize: 13.5, letterSpacing: 0.5, color: t.colors.text.secondary, marginBottom: 3 },
-  headline: { fontFamily: FONTS.display, fontSize: 60, lineHeight: 62, color: t.colors.text.primary, marginBottom: 24 },
+  headline: { fontFamily: FONTS.display, fontSize: 60, lineHeight: 62, color: t.colors.text.primary, marginBottom: 24, marginLeft: -3, paddingLeft: 3 },
   statCard: { flex: 1, backgroundColor: t.colors.bg.card, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 15, ...cardShadow(t.dark) },
   statNum: { fontFamily: FONTS.sansSemi, fontSize: 42, lineHeight: 46, color: t.colors.text.primary, fontVariant: ['tabular-nums'] },
   statUnit: { fontFamily: FONTS.sans, fontSize: 18, color: t.colors.text.secondary },
