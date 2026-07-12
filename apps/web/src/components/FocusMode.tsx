@@ -18,7 +18,7 @@ function AbandonModal({ onKeep, onLeave }: { onKeep: () => void; onLeave: () => 
           The session won&apos;t count toward today.
         </p>
         <button onClick={onKeep} className="wt-press" style={{ background: "var(--action-primary)", color: "var(--action-on-primary)", border: "none", borderRadius: "var(--r-pill)", fontSize: 17, fontWeight: 500, padding: "17px 32px", cursor: "pointer", width: "100%" }}>
-          Keep going.
+          Keep going
         </button>
         <button onClick={onLeave} style={{ background: "none", border: "none", cursor: "pointer", padding: 12, fontSize: 14, color: "var(--text-secondary)" }}>
           Leave
@@ -34,7 +34,7 @@ type Phase = "prestart" | "session" | "complete";
 
 export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) {
   const {
-    pomodoroSession, pausePomodoro, resumePomodoro, completePomodoro, cancelPomodoro, tickPomodoro, notifPrefs,
+    pomodoroSession, pausePomodoro, resumePomodoro, restartPomodoro, completePomodoro, cancelPomodoro, tickPomodoro, notifPrefs,
     resumedSession, consumeResumedSession,
   } = useApp();
 
@@ -50,12 +50,6 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
   }, []);
   const [showTimer, setShowTimer] = useState(true);
   const [showAbandon, setShowAbandon] = useState(false);
-  // Study Double — a study-with-me video that opens alongside the session
-  const [studyUrl, setStudyUrl] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
-    return localStorage.getItem("wt.studyDouble") ?? "";
-  });
-  const [studyOn, setStudyOn] = useState(false);
   const [confetti, setConfetti] = useState(false);
   const doneRef = useRef(false);
   const taskNameRef = useRef(pomodoroSession?.taskName ?? "");
@@ -115,8 +109,8 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
               <button onClick={() => { cancelPomodoro(); onDone(false); }} aria-label="Back" style={{ background: "none", border: "none", cursor: "pointer", padding: "8px 8px 8px 0", color: "var(--text-secondary)" }}>
                 <WIcon name="arrowL" size={20} />
               </button>
-              <p style={{ margin: "8px 0", fontSize: 12, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Focus on.</p>
-              <p style={{ margin: "0 0 14px", fontSize: 22, fontWeight: 600, lineHeight: 1.25, color: "var(--text-primary)", overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{pomodoroSession?.taskName}</p>
+              <p className="script" style={{ margin: "6px 0 0", paddingLeft: 3, fontFamily: "var(--font-display)", fontSize: 26, color: "var(--accent)" }}>Focus on</p>
+              <p style={{ margin: "2px 0 14px", fontSize: 22, fontWeight: 600, lineHeight: 1.25, color: "var(--text-primary)", overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{pomodoroSession?.taskName}</p>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "var(--bg-card)", border: "1px solid var(--border-hairline)", borderRadius: "var(--r-pill)", padding: "5px 12px" }}>
                 <WIcon name="clock" size={13} color="var(--text-secondary)" />
                 <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-secondary)" }}>{durMin} min</span>
@@ -130,47 +124,22 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
               </Ring>
             </div>
             <div style={{ padding: "0 24px 44px", flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 0", borderTop: "1px solid var(--border-hairline)", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 0", borderTop: "1px solid var(--border-hairline)", borderBottom: "1px solid var(--border-hairline)", marginBottom: 16, gap: 16 }}>
                 <div>
                   <p style={{ margin: "0 0 2px", fontSize: 16, color: "var(--text-primary)" }}>Show timer</p>
                   <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>Display countdown during focus</p>
                 </div>
                 <Toggle value={showTimer} onChange={setShowTimer} label="Show timer" />
               </div>
-              <div style={{ padding: "16px 0", borderTop: "1px solid var(--border-hairline)", borderBottom: "1px solid var(--border-hairline)", marginBottom: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-                  <div>
-                    <p style={{ margin: "0 0 2px", fontSize: 16, color: "var(--text-primary)" }}>Study double</p>
-                    <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>Open a study-with-me video alongside</p>
-                  </div>
-                  <Toggle value={studyOn} onChange={setStudyOn} label="Study double" />
-                </div>
-                {studyOn && (
-                  <input
-                    type="url"
-                    inputMode="url"
-                    placeholder="Paste a YouTube link"
-                    value={studyUrl}
-                    onChange={(e) => {
-                      setStudyUrl(e.target.value);
-                      try { localStorage.setItem("wt.studyDouble", e.target.value); } catch { /* quota */ }
-                    }}
-                    style={{ marginTop: 12, width: "100%", height: 44, borderRadius: "var(--r-row)", padding: "0 14px", fontSize: 14, background: "var(--bg-input)", color: "var(--text-primary)", border: "none", outline: "none", fontFamily: "inherit" }}
-                  />
-                )}
-              </div>
               <button
-                onClick={() => {
-                  if (studyOn && /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(studyUrl.trim())) {
-                    window.open(studyUrl.trim(), "_blank", "noopener");
-                  }
-                  resumePomodoro();
-                  setPhase("session");
-                }}
+                onClick={() => { resumePomodoro(); setPhase("session"); }}
                 className="wt-press"
                 style={{ background: "var(--action-primary)", color: "var(--action-on-primary)", border: "none", borderRadius: "var(--r-pill)", fontSize: 17, fontWeight: 500, padding: "17px 32px", cursor: "pointer", width: "100%" }}
               >
-                Start.
+                Start
+              </button>
+              <button onClick={finish} style={{ display: "block", margin: "14px auto 0", background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 14, fontWeight: 500, color: "var(--text-muted)" }}>
+                Start without focus mode
               </button>
             </div>
           </>
@@ -181,13 +150,23 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
           <>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "36px 24px 0", flexShrink: 0, gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: "0 0 3px", fontSize: 12, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Focus on</p>
+                <p className="script" style={{ margin: "0 0 1px", fontFamily: "var(--font-display)", fontSize: 20, color: "var(--accent)" }}>Focus on</p>
                 <p style={{ margin: 0, fontSize: 16, fontWeight: 500, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {pomodoroSession?.taskName}
                 </p>
               </div>
-              <button onClick={() => setShowTimer((s) => !s)} title="Toggle timer" style={{ background: "none", border: "none", cursor: "pointer", padding: 8, color: "var(--text-primary)", opacity: showTimer ? 0.9 : 0.35, flexShrink: 0 }}>
-                <WIcon name="clock" size={20} />
+              <button
+                onClick={() => setShowTimer((s) => !s)}
+                className="wt-press"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, background: showTimer ? "var(--c-coral-soft)" : "var(--bg-card)",
+                  border: "none", borderRadius: "var(--r-pill)", cursor: "pointer", padding: "8px 12px", flexShrink: 0,
+                }}
+              >
+                <WIcon name="clock" size={16} color={showTimer ? "var(--accent)" : "var(--text-secondary)"} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: showTimer ? "var(--accent)" : "var(--text-secondary)" }}>
+                  {showTimer ? "Timer on" : "Timer off"}
+                </span>
               </button>
             </div>
 
@@ -204,17 +183,28 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
             </div>
 
             <div style={{ padding: "20px 24px 44px", flexShrink: 0 }}>
-              <button onClick={paused ? resumePomodoro : pausePomodoro} className="wt-press" style={{ background: "var(--action-primary)", color: "var(--action-on-primary)", border: "none", borderRadius: "var(--r-pill)", fontSize: 17, fontWeight: 500, padding: "17px 32px", cursor: "pointer", width: "100%", marginBottom: 4 }}>
-                {paused ? "Resume." : "Pause."}
+              <button onClick={paused ? resumePomodoro : pausePomodoro} className="wt-press" style={{ background: "var(--action-primary)", color: "var(--action-on-primary)", border: "none", borderRadius: "var(--r-pill)", fontSize: 17, fontWeight: 500, padding: "17px 32px", cursor: "pointer", width: "100%", marginBottom: 10 }}>
+                {paused ? "Resume" : "Pause"}
               </button>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20 }}>
-                <button onClick={() => setShowAbandon(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px", fontSize: 14, color: "var(--text-muted)" }}>
-                  × Leave
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={restartPomodoro} className="wt-press" style={{
+                  flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  background: "var(--bg-card)", border: "1.5px solid var(--border-hairline)", borderRadius: "var(--r-pill)",
+                  fontSize: 15, fontWeight: 600, color: "var(--text-secondary)", padding: "13px 0", cursor: "pointer",
+                }}>
+                  <WIcon name="restart" size={16} />
+                  Restart
                 </button>
-                <button onClick={finish} style={{ background: "none", border: "none", cursor: "pointer", padding: "10px 14px", fontSize: 14, color: "var(--text-secondary)", fontWeight: 500 }}>
-                  ✓ Done early
+                <button onClick={finish} className="wt-press" style={{
+                  flex: 1, background: "var(--bg-card)", border: "1.5px solid var(--border-hairline)", borderRadius: "var(--r-pill)",
+                  fontSize: 15, fontWeight: 600, color: "var(--text-secondary)", padding: "13px 0", cursor: "pointer",
+                }}>
+                  Done early
                 </button>
               </div>
+              <button onClick={() => setShowAbandon(true)} style={{ display: "block", margin: "14px auto 0", background: "none", border: "none", cursor: "pointer", padding: 6, fontSize: 14, color: "var(--text-muted)" }}>
+                Leave
+              </button>
             </div>
 
             {showAbandon && (
@@ -230,7 +220,7 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
         {phase === "complete" && (
           <>
             <div style={{ padding: "36px 24px 0", flexShrink: 0 }}>
-              <p style={{ margin: "0 0 6px", fontSize: 12, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Finished.</p>
+              <p style={{ margin: "0 0 6px", fontSize: 12, color: "var(--text-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Finished</p>
               <p style={{ margin: 0, fontSize: 16, fontWeight: 500, color: "var(--text-secondary)", textDecoration: "line-through", textDecorationColor: "var(--accent)", textDecorationThickness: 1.5 }}>
                 {taskNameRef.current}
               </p>
@@ -242,11 +232,11 @@ export function FocusMode({ onDone }: { onDone: (completed: boolean) => void }) 
             </div>
             <div style={{ padding: "8px 24px 44px", flexShrink: 0 }}>
               <div style={{ textAlign: "center", marginBottom: 24 }}>
-                <p className="script" style={{ margin: "0 0 10px", fontFamily: "var(--font-display)", fontSize: 56, color: "var(--accent)", lineHeight: 1 }}>In bloom.</p>
-                <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted)", fontWeight: 300 }}>Done. On to the next.</p>
+                <p style={{ margin: "0 0 4px", fontSize: 34, fontWeight: 700, color: "var(--text-primary)" }}>Done.</p>
+                <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted)", fontWeight: 300 }}>On to the next.</p>
               </div>
               <button onClick={() => onDone(true)} className="wt-press" style={{ background: "var(--action-primary)", color: "var(--action-on-primary)", border: "none", borderRadius: "var(--r-pill)", fontSize: 17, fontWeight: 500, padding: "17px 32px", cursor: "pointer", width: "100%" }}>
-                Back to wheel.
+                Back to wheel
               </button>
             </div>
           </>

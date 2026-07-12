@@ -139,6 +139,7 @@ interface AppContextType {
   startPomodoro: (task: Task) => void;
   pausePomodoro: () => void;
   resumePomodoro: () => void;
+  restartPomodoro: () => void;
   completePomodoro: () => void;
   cancelPomodoro: () => void;
   tickPomodoro: () => void;
@@ -584,6 +585,12 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     setPomodoroSession((s) => (s ? { ...s, isRunning: true, endsAt: Date.now() + s.remainingSeconds * 1000 } : null));
   };
 
+  const restartPomodoro = () => {
+    setPomodoroSession((s) => (s ? {
+      ...s, remainingSeconds: s.totalSeconds, isRunning: true, endsAt: Date.now() + s.totalSeconds * 1000,
+    } : null));
+  };
+
   const completePomodoro = () => {
     if (!pomodoroSession) return;
     const { taskId } = pomodoroSession;
@@ -952,7 +959,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const value: AppContextType = {
     tasks, addTask, updateTask, deleteTask,
     completedTasks, completeTask, uncompleteTask, reorderTasks,
-    pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, cancelPomodoro, tickPomodoro,
+    pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, restartPomodoro, completePomodoro, cancelPomodoro, tickPomodoro,
     resumedSession, consumeResumedSession,
     dailyGoal, setDailyGoal,
     defaultTimerMinutes, setDefaultTimerMinutes,

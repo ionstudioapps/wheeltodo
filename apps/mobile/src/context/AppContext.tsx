@@ -96,6 +96,7 @@ interface AppContextType {
   startPomodoro: (task: Task) => void;
   pausePomodoro: () => void;
   resumePomodoro: () => void;
+  restartPomodoro: () => void;
   completePomodoro: () => void;
   tickPomodoro: () => void;
   // True for one render after a running/paused session was restored from
@@ -538,6 +539,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const resumePomodoro = () => {
     setPomodoroSession((s) => (s ? { ...s, isRunning: true, endsAt: Date.now() + s.remainingSeconds * 1000 } : null));
+  };
+
+  const restartPomodoro = () => {
+    setPomodoroSession((s) => (s ? {
+      ...s, remainingSeconds: s.totalSeconds, isRunning: true, endsAt: Date.now() + s.totalSeconds * 1000,
+    } : null));
   };
 
   const completePomodoro = () => {
@@ -1164,7 +1171,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value: AppContextType = {
     tasks, addTask, updateTask, deleteTask,
     completedTasks, completeTask, uncompleteTask, reorderTasks,
-    pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, tickPomodoro,
+    pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, restartPomodoro, completePomodoro, tickPomodoro,
     resumedSession, consumeResumedSession,
     defaultTimerMinutes, setDefaultTimerMinutes,
     dailyGoal, setDailyGoal,
