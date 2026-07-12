@@ -434,8 +434,13 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     setNotifPrefs(ls<NotifPrefs>(KEYS.notifPrefs, { nudge: true, focus: true, recap: true }));
 
     setLoaded(true);
+  }, []);
 
-    // For logged-in users: load cloud data (sync available to all signed-in users)
+  // Cloud sync for logged-in users — kept separate from the localStorage
+  // hydration above so a userId change (auth state settling in after mount,
+  // token refresh, etc.) doesn't re-run that effect and stomp in-session
+  // state changes (e.g. a just-reset onboarding flag) with stale saved values.
+  useEffect(() => {
     if (userId) {
       setCloudLoading(true);
       refreshFromCloud().finally(() => setCloudLoading(false));
