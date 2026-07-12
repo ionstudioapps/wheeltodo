@@ -150,9 +150,9 @@ function TaskAvatar({ task, size = 38 }: { task: Task; size?: number }) {
   );
 }
 
-function TaskRow({ task, dim, displayTime, dragging, dropTarget, onComplete, onDelete, onEdit, onGripPointerDown }: {
+function TaskRow({ task, dim, displayTime, dragging, dropTarget, onComplete, onDelete, onEdit, onStartFocus, onGripPointerDown }: {
   task: Task; dim?: boolean; displayTime?: string; dragging?: boolean; dropTarget?: boolean;
-  onComplete: () => void; onDelete: () => void; onEdit: () => void; onGripPointerDown?: (e: React.PointerEvent) => void;
+  onComplete: () => void; onDelete: () => void; onEdit: () => void; onStartFocus?: () => void; onGripPointerDown?: (e: React.PointerEvent) => void;
 }) {
   return (
     <div onClick={onEdit} style={{
@@ -180,6 +180,14 @@ function TaskRow({ task, dim, displayTime, dragging, dropTarget, onComplete, onD
       <button onClick={(e) => { e.stopPropagation(); onDelete(); }} aria-label="Delete task" style={{ border: "none", background: "none", cursor: "pointer", padding: 4, color: "var(--text-muted)", flexShrink: 0 }}>
         <WIcon name="trash" size={16} stroke={1.8} />
       </button>
+      {onStartFocus && (
+        <button onClick={(e) => { e.stopPropagation(); onStartFocus(); }} aria-label="Start focus" style={{
+          width: 26, height: 26, borderRadius: 999, flexShrink: 0, border: "none", cursor: "pointer",
+          background: task.color, display: "inline-flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <WIcon name="play" size={11} color="var(--bg-card)" />
+        </button>
+      )}
       <button onClick={(e) => { e.stopPropagation(); onComplete(); }} aria-label="Mark done" style={{
         width: 26, height: 26, borderRadius: 999, flexShrink: 0, border: "none", cursor: "pointer",
         background: "transparent", boxShadow: "inset 0 0 0 1.5px var(--border-hairline)",
@@ -800,6 +808,7 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
                     onComplete={() => handleDone(task)}
                     onDelete={() => handleDeleteTask(task)}
                     onEdit={() => setEditingTask(task)}
+                    onStartFocus={() => handleStartFocus(task)}
                     onGripPointerDown={() => startTaskDrag(i)}
                   />
                 ))}

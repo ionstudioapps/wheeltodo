@@ -176,7 +176,7 @@ export function HabitsScreen() {
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
 
   const habits = restTasks.filter((h) => !h.isPreset);
-  const { setRowRef, makePanResponder, dragIndex, dragY, shiftFor } = useDragReorder(habits, reorderRestTasks);
+  const { setRowRef, getGripHandlers, dragIndex, dragY, shiftFor } = useDragReorder(habits, reorderRestTasks);
 
   function handleDeleteHabit(habit: RestTask) {
     removeRestTask(habit.id);
@@ -283,7 +283,7 @@ export function HabitsScreen() {
             {habits.map((h, i) => (
               <Animated.View
                 key={h.id}
-                ref={(r) => setRowRef(i, r as unknown as View)}
+                ref={setRowRef(i)}
                 style={{
                   transform: [{ translateY: dragIndex === i ? dragY : shiftFor(i) }],
                   zIndex: dragIndex === i ? 10 : 0,
@@ -298,7 +298,7 @@ export function HabitsScreen() {
                   habit={h}
                   streakDays={habitStreak(h.id)}
                   week={weekFor(h.id)}
-                  gripHandlers={makePanResponder(i).panHandlers}
+                  gripHandlers={getGripHandlers(i)}
                   onToggle={() => handleToggleHabit(h)}
                   onDelete={() => handleDeleteHabit(h)}
                 />

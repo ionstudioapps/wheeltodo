@@ -4,7 +4,7 @@ import {
   Animated, Easing, type GestureResponderHandlers, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { ArrowRight, ArrowUpRight, Check, GripVertical, Mic, Plus, Sparkles, Trash2, Wand2, X } from 'lucide-react-native';
+import { ArrowRight, ArrowUpRight, Check, GripVertical, Mic, Play, Plus, Sparkles, Trash2, Wand2, X } from 'lucide-react-native';
 import { useDragReorder } from '../hooks/useDragReorder';
 import { useApp, COLORS, FREE_LIMITS, type Task } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
@@ -47,9 +47,9 @@ function TaskAvatar({ task, size = 38 }: { task: Task; size?: number }) {
 
 /* ── Task row ────────────────────────────────────────────────────────────── */
 
-function TaskRow({ task, dim, remainingLabel, gripHandlers, onComplete, onDelete, onEdit }: {
+function TaskRow({ task, dim, remainingLabel, gripHandlers, onComplete, onDelete, onEdit, onStartFocus }: {
   task: Task; dim?: boolean; remainingLabel?: string; gripHandlers?: GestureResponderHandlers;
-  onComplete: () => void; onDelete: () => void; onEdit: () => void;
+  onComplete: () => void; onDelete: () => void; onEdit: () => void; onStartFocus?: () => void;
 }) {
   const t = useTokens();
 
@@ -77,6 +77,14 @@ function TaskRow({ task, dim, remainingLabel, gripHandlers, onComplete, onDelete
       <Pressable hitSlop={8} onPress={onDelete} accessibilityRole="button" accessibilityLabel={`Delete ${task.name}`}>
         <Trash2 size={16} color={t.colors.text.muted} strokeWidth={1.8} />
       </Pressable>
+      {onStartFocus && (
+        <Pressable hitSlop={8} onPress={onStartFocus} accessibilityRole="button" accessibilityLabel={`Start focus on ${task.name}`} style={{
+          width: 26, height: 26, borderRadius: 999, backgroundColor: task.color,
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Play size={12} color={t.colors.bg.card} strokeWidth={2.4} fill={t.colors.bg.card} />
+        </Pressable>
+      )}
       <Pressable hitSlop={8} onPress={onComplete} accessibilityRole="button" accessibilityLabel={`Mark ${task.name} done`} style={{
         width: 26, height: 26, borderRadius: 999, borderWidth: 1.5, borderColor: t.colors.hairline,
         alignItems: 'center', justifyContent: 'center',
@@ -371,7 +379,7 @@ export function TasksScreen() {
   const [spinning, setSpinning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
-  const { setRowRef, makePanResponder, dragIndex, dragY, shiftFor } = useDragReorder(tasks, reorderTasks);
+  const { setRowRef, getGripHandlers, dragIndex, dragY, shiftFor } = useDragReorder(tasks, reorderTasks);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -637,7 +645,7 @@ export function TasksScreen() {
               {tasks.map((task, i) => (
                 <Animated.View
                   key={task.id}
-                  ref={(r) => setRowRef(i, r as unknown as View)}
+                  ref={setRowRef(i)}
                   style={{
                     transform: [{ translateY: dragIndex === i ? dragY : shiftFor(i) }],
                     zIndex: dragIndex === i ? 10 : 0,
@@ -652,10 +660,11 @@ export function TasksScreen() {
                     task={task}
                     dim={picked?.id === task.id}
                     remainingLabel={taskProgress[task.id] != null ? `${formatMmSs(taskProgress[task.id])} left` : undefined}
-                    gripHandlers={makePanResponder(i).panHandlers}
+                    gripHandlers={getGripHandlers(i)}
                     onComplete={() => handleDone(task)}
                     onDelete={() => handleDeleteTask(task)}
                     onEdit={() => setEditingTask(task)}
+                    onStartFocus={() => handleStartFocus(task)}
                   />
                 </Animated.View>
               ))}

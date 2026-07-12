@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Animated, PanResponder, type View } from 'react-native';
+import { Animated, PanResponder, type PanResponderInstance, type View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
 /**
@@ -12,13 +12,22 @@ import * as Haptics from 'expo-haptics';
  * continuously), so this doesn't support auto-scroll while dragging near the
  * edges of a long list — acceptable for the short task/habit lists this is
  * used with.
+ *
+ * PanResponders and row-ref callbacks are cached per index and reused across
+ * renders. Recreating either mid-gesture (e.g. because a parent re-render
+ * spreads fresh `.panHandlers`/ref-callback objects onto the row) desyncs
+ * the native touch responder from the JS-side gesture — visible as the row
+ * stuttering, briefly vanishing, or lagging behind the finger while dragging.
  */
 export function useDragReorder<T>(items: T[], onReorder: (next: T[]) => void) {
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const rowRefs = useRef<Map<number, View | null>>(new Map());
+  const rowRefCallbacks = useRef<Map<number, (r: View | null) => void>>(new Map());
+  const panResponders = useRef<Map<number, PanResponderInstance>>(new Map());
   const rowMidpoints = useRef<number[]>([]);
   const rowSlots = useRef<number[]>([]); // distance each row travels when it swaps past its neighbour
+  const measured = useRef(false);
   const dragIndexRef = useRef<number | null>(null);
   const overIndexRef = useRef<number | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -38,8 +47,13 @@ export function useDragReorder<T>(items: T[], onReorder: (next: T[]) => void) {
     return v;
   }
 
-  function setRowRef(index: number, ref: View | null) {
-    rowRefs.current.set(index, ref);
+  function getRowRefCallback(index: number): (r: View | null) => void {
+    let cb = rowRefCallbacks.current.get(index);
+    if (!cb) {
+      cb = (r: View | null) => rowRefs.current.set(index, r);
+      rowRefCallbacks.current.set(index, cb);
+    }
+    return cb;
   }
 
   function measureAll(): Promise<void> {
@@ -63,6 +77,7 @@ export function useDragReorder<T>(items: T[], onReorder: (next: T[]) => void) {
       // row height plus the list gap). Last row reuses its predecessor's.
       rowSlots.current = rows.map((r, i) =>
         i < rows.length - 1 ? rows[i + 1].top - r.top : (i > 0 ? r.top - rows[i - 1].top : r.height));
+      measured.current = true;
     });
   }
 
@@ -103,48 +118,58 @@ export function useDragReorder<T>(items: T[], onReorder: (next: T[]) => void) {
     }
     dragIndexRef.current = null;
     overIndexRef.current = null;
+    measured.current = false;
     setDragIndex(null);
     setOverIndex(null);
     // The list re-renders in its new order, so all offsets go back to zero.
     resetOffsets();
   }
 
-  function makePanResponder(index: number) {
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      // Without this the enclosing ScrollView steals the gesture as soon as
-      // the finger moves vertically, ending the drag after a few pixels.
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: () => {
-        dragIndexRef.current = index;
-        overIndexRef.current = index;
-        setDragIndex(index);
-        setOverIndex(index);
-        resetOffsets();
-        void measureAll();
-        Haptics.selectionAsync().catch(() => {});
-      },
-      onPanResponderMove: (_evt, gesture) => {
-        dragY.setValue(gesture.dy);
-        const mids = rowMidpoints.current;
-        if (!mids.length) return;
-        let next = dragIndexRef.current ?? 0;
-        for (let i = 0; i < mids.length; i++) {
-          next = i;
-          if (gesture.moveY < mids[i]) break;
-        }
-        if (next !== overIndexRef.current) {
-          overIndexRef.current = next;
-          setOverIndex(next);
-          const from = dragIndexRef.current;
-          if (from !== null) animateShifts(from, next);
-        }
-      },
-      onPanResponderRelease: () => endDrag(true),
-      onPanResponderTerminate: () => endDrag(false),
-    });
+  function getGripHandlers(index: number): PanResponderInstance['panHandlers'] {
+    let pr = panResponders.current.get(index);
+    if (!pr) {
+      pr = PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        // Without this the enclosing ScrollView steals the gesture as soon as
+        // the finger moves vertically, ending the drag after a few pixels.
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          dragIndexRef.current = index;
+          overIndexRef.current = index;
+          measured.current = false;
+          setDragIndex(index);
+          setOverIndex(index);
+          resetOffsets();
+          void measureAll();
+          Haptics.selectionAsync().catch(() => {});
+        },
+        onPanResponderMove: (_evt, gesture) => {
+          // Row is always live under the finger even before the first
+          // measurement resolves — only the drop-target calculation waits.
+          dragY.setValue(gesture.dy);
+          if (!measured.current) return;
+          const mids = rowMidpoints.current;
+          if (!mids.length) return;
+          let next = dragIndexRef.current ?? 0;
+          for (let i = 0; i < mids.length; i++) {
+            next = i;
+            if (gesture.moveY < mids[i]) break;
+          }
+          if (next !== overIndexRef.current) {
+            overIndexRef.current = next;
+            setOverIndex(next);
+            const from = dragIndexRef.current;
+            if (from !== null) animateShifts(from, next);
+          }
+        },
+        onPanResponderRelease: () => endDrag(true),
+        onPanResponderTerminate: () => endDrag(false),
+      });
+      panResponders.current.set(index, pr);
+    }
+    return pr.panHandlers;
   }
 
-  return { setRowRef, makePanResponder, dragIndex, overIndex, dragY, shiftFor };
+  return { setRowRef: getRowRefCallback, getGripHandlers, dragIndex, overIndex, dragY, shiftFor };
 }
