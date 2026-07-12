@@ -1,9 +1,10 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { useApp } from "@/context/AppContext";
 import { WIcon, WheelMark } from "@/components/ui/kit";
+import { StreakPanel } from "@/components/StreakPanel";
 
 export type TabId = "tasks" | "habits" | "you";
 
@@ -36,13 +37,10 @@ function displayName(user: SupabaseUser | null) {
 }
 
 export function AppShell({ children, user, activeTab, setActiveTab, onAddTask }: AppShellProps) {
-  const { streak, tasks, completedTasks } = useApp();
+  const { streak } = useApp();
   const initials = userInitials(user);
+  const [streakOpen, setStreakOpen] = useState(false);
 
-  // Tutorial progress (Seed onboarding tasks are seeded with tut_ ids)
-  const tutRemaining = tasks.filter((t) => t.id.startsWith("tut_")).length;
-  const tutDone = new Set(completedTasks.filter((t) => t.taskId.startsWith("tut_")).map((t) => t.taskId)).size;
-  const tutActive = tutRemaining > 0 && tutDone < 5;
 
   return (
     <div id="app" style={{ display: "flex", height: "100dvh", background: "var(--bg-screen)", color: "var(--text-primary)", overflow: "hidden" }}>
@@ -79,19 +77,6 @@ export function AppShell({ children, user, activeTab, setActiveTab, onAddTask }:
           })}
         </nav>
 
-        {tutActive && (
-          <div style={{ padding: "0 12px 14px" }}>
-            <div style={{ background: "var(--c-coral-soft)", borderRadius: 14, padding: "11px 13px" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", marginBottom: 7, letterSpacing: "0.06em" }}>
-                TUTORIAL · {tutDone}/5
-              </div>
-              <div style={{ height: 3, borderRadius: 99, background: "var(--bg-overlay)", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${(tutDone / 5) * 100}%`, background: "var(--accent)", borderRadius: 99 }} />
-              </div>
-            </div>
-          </div>
-        )}
-
         <div style={{ padding: "0 10px" }}>
           <button onClick={() => setActiveTab("you")} style={{
             display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12,
@@ -113,7 +98,7 @@ export function AppShell({ children, user, activeTab, setActiveTab, onAddTask }:
         {/* Mobile top bar */}
         <header className="wt-mobile-only" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 22px 4px", flexShrink: 0 }}>
           <button
-            onClick={() => setActiveTab("habits")}
+            onClick={() => setStreakOpen(true)}
             aria-label="View streak"
             style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", fontSize: 15, fontWeight: 500, color: "var(--text-secondary)", padding: 0 }}
           >
@@ -137,11 +122,11 @@ export function AppShell({ children, user, activeTab, setActiveTab, onAddTask }:
 
         {/* Desktop top bar */}
         <header className="wt-desktop-only" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "28px 52px 0", flexShrink: 0 }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px 6px 10px", borderRadius: 9999, background: "var(--c-coral-soft)", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>
+          <button onClick={() => setStreakOpen(true)} aria-label="View streak" className="wt-press" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px 6px 10px", borderRadius: 9999, border: "none", cursor: "pointer", background: "var(--c-coral-soft)", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>
             <WIcon name="flame" size={16} color="var(--accent)" />
             <span style={{ color: "var(--text-primary)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{streak}</span>
             <span>day streak</span>
-          </span>
+          </button>
           <button onClick={onAddTask} aria-label="Add task" className="wt-press" style={{ width: 40, height: 40, border: "none", background: "transparent", borderRadius: 9999, color: "var(--text-secondary)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <WIcon name="plus" size={20} />
           </button>
@@ -175,6 +160,8 @@ export function AppShell({ children, user, activeTab, setActiveTab, onAddTask }:
           })}
         </nav>
       </div>
+
+      {streakOpen && <StreakPanel onClose={() => setStreakOpen(false)} />}
     </div>
   );
 }

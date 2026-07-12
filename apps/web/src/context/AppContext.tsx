@@ -13,7 +13,7 @@ import React, {
 import { type AchievementValues } from "../utils/achievements";
 import {
   dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted,
-  dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings, dbBulkPush,
+  dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings, dbSetHabitDay, dbBulkPush,
 } from "../utils/db";
 import { THEMES, type ThemeName } from "@todo/shared";
 
@@ -56,6 +56,7 @@ export interface PomodoroSession {
 export type RestCategory = "Physical" | "Mental" | "Social" | "Nourishment" | "My Tasks";
 export type DailyMood = "drained" | "okay" | "restless" | null;
 export type RestGoalTier = "easy" | "standard" | "dedicated";
+export type PlanBilling = "monthly" | "annual";
 
 export const REST_GOAL_MINUTES: Record<RestGoalTier, number> = {
   easy: 15,
@@ -116,20 +117,14 @@ export interface NotifPrefs {
 
 const DEFAULT_CATEGORIES = ["Work", "Personal", "Learning", "Health"];
 
-const defaultTasks: Task[] = [
-  { id: "1", name: "Write blog post",  minutes: 25, color: "#E59880", icon: "PenLine"  },
-  { id: "2", name: "Review code",      minutes: 15, color: "#EDB590", icon: "Code"     },
-  { id: "3", name: "Design mockups",   minutes: 30, color: "#9DC4BC", icon: "Palette"  },
-  { id: "4", name: "Team meeting",     minutes: 20, color: "#F0D29D", icon: "Users"    },
-  { id: "5", name: "Email replies",    minutes: 10, color: "#ADA8CC", icon: "Mail"     },
-  { id: "6", name: "Research",         minutes: 25, color: "#D4A5C8", icon: "BookOpen" },
-];
+// New installs start with an empty wheel — the walkthrough hands off to the
+// "Add your first task" empty state rather than seeding demo tasks.
+const defaultTasks: Task[] = [];
 
 // ─── Context type ─────────────────────────────────────────────────────────────
 
 interface AppContextType {
   tasks: Task[];
-  seedTasks: (tasks: Task[]) => void;
   addTask: (task: Omit<Task, "id">) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
@@ -211,9 +206,13 @@ interface AppContextType {
 
   hasSeenOnboarding: boolean;
   markOnboardingSeen: () => void;
+  resetOnboarding: () => void;
 
   isPremium: boolean;
-  activatePremium: () => Promise<void>;
+  activatePremium: (billing?: PlanBilling) => Promise<void>;
+  deactivatePremium: () => void;
+  planBilling: PlanBilling | null;
+  setPlanBilling: (b: PlanBilling) => void;
 
   theme: ThemeName;
   setTheme: (t: ThemeName) => void;
@@ -264,6 +263,7 @@ const KEYS = {
   defaultTimerMinutes: "wt.defaultTimerMinutes",
   hasSeenOnboarding: "wt.hasSeenOnboarding",
   isPremium: "wt.isPremium",
+  planBilling: "wt.planBilling",
   theme: "wt.theme",
   spinsToday: "wt.spinsToday",
   spinsTodayDate: "wt.spinsTodayDate",
@@ -320,13 +320,39 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     const uid = syncRef.current.userId;
     if (!uid) return;
     try {
-      const { tasks: dbTasks, completedTasks: dbCompleted, settings } = await dbLoad(uid);
+      const { tasks: dbTasks, completedTasks: dbCompleted, customRestTasks, habitHistory: dbHistory, settings } = await dbLoad(uid);
       const premium = settings?.is_premium ?? false;
       setIsPremium(premium);
       lsSet(KEYS.isPremium, premium);
 
       if (dbTasks.length > 0) setTasks(dbTasks);
       if (dbCompleted.length > 0) setCompletedTasks(dbCompleted);
+      if (customRestTasks.length > 0) {
+        // Cloud is the source for the custom habit list; per-day completion
+        // state and any locally created (not yet pushed) habits stay local.
+        setRestTasks((prev) => {
+          const localById = new Map(prev.filter((t) => !t.isPreset).map((t) => [t.id, t]));
+          const merged: RestTask[] = customRestTasks.map((rt) => ({
+            id: rt.id, name: rt.name, isPreset: false,
+            completedToday: localById.get(rt.id)?.completedToday ?? false,
+            durationMinutes: rt.durationMinutes,
+            category: rt.category as RestCategory,
+          }));
+          const cloudIds = new Set(merged.map((m) => m.id));
+          const localOnly = prev.filter((t) => !t.isPreset && !cloudIds.has(t.id));
+          return [...prev.filter((t) => t.isPreset), ...merged, ...localOnly];
+        });
+      }
+      if (Object.keys(dbHistory).length > 0) {
+        setHabitHistory((local) => {
+          const next: Record<string, string[]> = { ...local };
+          Object.entries(dbHistory).forEach(([habitId, days]) => {
+            next[habitId] = Array.from(new Set([...(next[habitId] ?? []), ...days]));
+          });
+          lsSet(KEYS.habitHistory, next);
+          return next;
+        });
+      }
       if (settings) {
         setDailyGoalState(settings.daily_goal);
         setDefaultTimerMinutesState(settings.default_timer_minutes);
@@ -392,6 +418,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     setDefaultTimerMinutesState(ls<number>(KEYS.defaultTimerMinutes, 25));
     setHasSeenOnboarding(ls<boolean>(KEYS.hasSeenOnboarding, false));
     setIsPremium(ls<boolean>(KEYS.isPremium, false));
+    setPlanBillingState(ls<PlanBilling | null>(KEYS.planBilling, null));
     const savedTheme = ls<ThemeName>(KEYS.theme, 'warm-start');
     setThemeState(savedTheme);
     applyTheme(savedTheme);
@@ -457,13 +484,6 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   }, [dailyGoal, defaultTimerMinutes, restGoalTier, loaded, userId]);
 
   // ─── Task actions ────────────────────────────────────────────────────────────
-
-  // Replace the task list wholesale (used by the tutorial to pre-load its 5 tasks)
-  const seedTasks = (seeded: Task[]) => {
-    setTasks(seeded);
-    const { userId: uid } = syncRef.current;
-    if (uid) seeded.forEach((t, i) => dbUpsertTask(uid, t, i));
-  };
 
   const addTask = (task: Omit<Task, "id">) => {
     const newTask = { ...task, id: Date.now().toString() };
@@ -659,6 +679,8 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
       if (task) {
         const nowDone = !task.completedToday;
         const todayStr = new Date().toDateString();
+        const { userId: uid } = syncRef.current;
+        if (uid && !task.isPreset) dbSetHabitDay(uid, id, todayStr, nowDone);
         setHabitHistory((h) => {
           const existing = h[id] ?? [];
           const next = {
@@ -719,10 +741,20 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   const setDailyGoal = (goal: number) => setDailyGoalState(goal);
   const setDefaultTimerMinutes = (m: number) => setDefaultTimerMinutesState(m);
   const markOnboardingSeen = useCallback(() => setHasSeenOnboarding(true), []);
+  // Replay the first-run walkthrough (You tab → "Replay the tour")
+  const resetOnboarding = useCallback(() => setHasSeenOnboarding(false), []);
 
-  const activatePremium = useCallback(async () => {
+  const [planBilling, setPlanBillingState] = useState<PlanBilling | null>(null);
+  const setPlanBilling = useCallback((b: PlanBilling) => {
+    setPlanBillingState(b);
+    lsSet(KEYS.planBilling, b);
+  }, []);
+
+  const activatePremium = useCallback(async (billing: PlanBilling = "monthly") => {
     setIsPremium(true);
     lsSet(KEYS.isPremium, true);
+    setPlanBillingState(billing);
+    lsSet(KEYS.planBilling, billing);
     if (!userId) return;
     // Persist premium flag + push all current data to Supabase
     await dbUpsertSettings(userId, { isPremium: true, dailyGoal, defaultTimerMinutes, restGoalTier });
@@ -730,6 +762,16 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     await dbBulkPush(userId, tasks, completedTasks, customRestTasks);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, tasks, completedTasks, restTasks, dailyGoal, defaultTimerMinutes, restGoalTier]);
+
+  // Downgrade to Seed. Existing over-cap habits/tasks stay usable (adding new
+  // ones is what the caps gate); the UI copy covers this.
+  const deactivatePremium = useCallback(() => {
+    setIsPremium(false);
+    lsSet(KEYS.isPremium, false);
+    setPlanBillingState(null);
+    localStorage.removeItem(KEYS.planBilling);
+    if (userId) dbUpsertSettings(userId, { isPremium: false });
+  }, [userId]);
 
   const addCategory = (cat: string) => {
     const trimmed = cat.trim();
@@ -830,12 +872,15 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const hasTask = completedTasks.some((t) => { const d = new Date(t.completedAt); return d >= today && d < tomorrow; });
-    const hasRest = completedRestDays.some((d) => d >= today && d < tomorrow);
+    // Any logged rest counts as showing up — a single quick rest preserves the
+    // streak (partialRestDays covers rest below the daily rest goal).
+    const hasRest = completedRestDays.some((d) => d >= today && d < tomorrow)
+      || partialRestDays.some((p) => p.date >= today && p.date < tomorrow);
     return hasTask || hasRest;
-  }, [completedTasks, completedRestDays]);
+  }, [completedTasks, completedRestDays, partialRestDays]);
 
   const streak = useMemo(() => {
-    if (completedTasks.length === 0 && completedRestDays.length === 0) return 0;
+    if (completedTasks.length === 0 && completedRestDays.length === 0 && partialRestDays.length === 0) return 0;
     let count = 0;
     const base = new Date();
     base.setHours(0, 0, 0, 0);
@@ -845,16 +890,18 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
       const next = new Date(day);
       next.setDate(next.getDate() + 1);
       const hasTask = completedTasks.some((t) => { const d = new Date(t.completedAt); return d >= day && d < next; });
-      const hasRest = completedRestDays.some((d) => d >= day && d < next);
+      const hasRest = completedRestDays.some((d) => d >= day && d < next)
+        || partialRestDays.some((p) => p.date >= day && p.date < next);
       if (hasTask || hasRest) { count++; } else { break; }
     }
     return count;
-  }, [completedTasks, completedRestDays]);
+  }, [completedTasks, completedRestDays, partialRestDays]);
 
   const bestStreak = useMemo(() => {
     const dates = new Set<number>();
     completedTasks.forEach((t) => { const d = new Date(t.completedAt); d.setHours(0, 0, 0, 0); dates.add(d.getTime()); });
     completedRestDays.forEach((d) => { const day = new Date(d); day.setHours(0, 0, 0, 0); dates.add(day.getTime()); });
+    partialRestDays.forEach((p) => { const day = new Date(p.date); day.setHours(0, 0, 0, 0); dates.add(day.getTime()); });
     const sorted = Array.from(dates).sort((a, b) => a - b);
     if (sorted.length === 0) return 0;
     const DAY = 86400000;
@@ -863,7 +910,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
       if (sorted[i] - sorted[i - 1] === DAY) { current++; if (current > best) best = current; } else { current = 1; }
     }
     return best;
-  }, [completedTasks, completedRestDays]);
+  }, [completedTasks, completedRestDays, partialRestDays]);
 
   const restStreak = useMemo(() => {
     if (completedRestDays.length === 0) return 0;
@@ -903,7 +950,7 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
   }, [completedRestDays]);
 
   const value: AppContextType = {
-    tasks, seedTasks, addTask, updateTask, deleteTask,
+    tasks, addTask, updateTask, deleteTask,
     completedTasks, completeTask, uncompleteTask, reorderTasks,
     pomodoroSession, taskProgress, startPomodoro, pausePomodoro, resumePomodoro, completePomodoro, cancelPomodoro, tickPomodoro,
     resumedSession, consumeResumedSession,
@@ -920,8 +967,8 @@ export function AppProvider({ children, userId }: { children: ReactNode; userId?
     restGoalTier, setRestGoalTier,
     restMinutesToday, restGoalMinutes,
     restStreak, bestRestStreak,
-    hasSeenOnboarding, markOnboardingSeen,
-    isPremium, activatePremium,
+    hasSeenOnboarding, markOnboardingSeen, resetOnboarding,
+    isPremium, activatePremium, deactivatePremium, planBilling, setPlanBilling,
     theme, setTheme,
   };
 

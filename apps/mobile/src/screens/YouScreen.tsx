@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Bell, Calendar, Check, Crosshair, Flame, LogOut } from 'lucide-react-native';
+import { Bell, Calendar, Check, Crosshair, Flame, LogOut, Sparkles } from 'lucide-react-native';
 import { THEMES, type ThemeName } from '@todo/shared/themes';
 import { useApp, type NotifPrefs } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
@@ -104,8 +104,12 @@ export function YouScreen() {
   const t = useTokens();
   const {
     user, logout, streak, completedTasks, theme, setTheme,
-    notifPrefs, setNotifPref, isPremium, activatePremium,
+    notifPrefs, setNotifPref, isPremium, activatePremium, resetOnboarding,
+    deactivatePremium, planBilling, setPlanBilling,
+    wheelSoundEnabled, setWheelSoundEnabled,
   } = useApp();
+  const [confirmDowngrade, setConfirmDowngrade] = useState(false);
+  const otherBilling = planBilling === 'annual' ? 'monthly' : 'annual';
 
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -171,6 +175,21 @@ export function YouScreen() {
           })}
         </View>
 
+        {/* Feedback */}
+        <SectionLabel style={{ marginBottom: 14 }}>Feedback</SectionLabel>
+        <View style={[s.settingCard, cardShadow(t.dark), { marginBottom: 28 }]}>
+          <View style={s.settingRow}>
+            <View style={[s.settingChip, { backgroundColor: t.colors.softs.coral }]}>
+              <Flame size={19} color={t.colors.accent.main} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.settingTitle}>Wheel haptics</Text>
+              <Text style={s.settingDesc}>Ticks you can feel as the wheel spins</Text>
+            </View>
+            <Toggle value={wheelSoundEnabled} onChange={setWheelSoundEnabled} />
+          </View>
+        </View>
+
         {/* Theme */}
         <SectionLabel style={{ marginBottom: 14 }}>Theme</SectionLabel>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 28 }}>
@@ -207,7 +226,7 @@ export function YouScreen() {
         <View style={[s.settingCard, cardShadow(t.dark), { padding: 18, marginBottom: 28 }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 16, color: t.colors.text.primary }}>
-              {isPremium ? 'Bloom' : 'Seed · Free'}
+              {isPremium ? `Bloom${planBilling ? ` · ${planBilling}` : ''}` : 'Seed · Free'}
             </Text>
             {isPremium ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: t.colors.softs.sage, borderRadius: 100, paddingHorizontal: 10, paddingVertical: 4 }}>
@@ -218,7 +237,7 @@ export function YouScreen() {
               <BloomChip />
             )}
           </View>
-          <Text style={{ fontFamily: FONTS.sans, fontSize: 12, color: t.colors.text.secondary, marginBottom: isPremium ? 0 : 14 }}>
+          <Text style={{ fontFamily: FONTS.sans, fontSize: 12, color: t.colors.text.secondary, marginBottom: 14 }}>
             {isPremium
               ? 'Unlimited spins, habits and AI · thank you for growing with us'
               : '5 spins/day · 3 habits · 1 AI breakdown/day'}
@@ -226,7 +245,41 @@ export function YouScreen() {
           {!isPremium && (
             <SpinPill full small onPress={() => setUpgradeOpen(true)}>More with Bloom</SpinPill>
           )}
+          {isPremium && (
+            <View style={{ borderTopWidth: 1, borderTopColor: t.colors.hairline, paddingTop: 8, gap: 2 }}>
+              <Pressable onPress={() => setPlanBilling(otherBilling)} style={{ paddingVertical: 8 }}>
+                <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 13.5, color: t.colors.text.primary }}>
+                  Switch to {otherBilling} billing
+                </Text>
+              </Pressable>
+              {confirmDowngrade ? (
+                <View style={{ paddingVertical: 8 }}>
+                  <Text style={{ fontFamily: FONTS.sans, fontSize: 12.5, lineHeight: 19, color: t.colors.text.secondary, marginBottom: 8 }}>
+                    Move to Seed? Your extra habits and tasks stay — the free caps only limit adding new ones.
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 18 }}>
+                    <Pressable onPress={() => { deactivatePremium(); setConfirmDowngrade(false); }}>
+                      <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 13, color: t.colors.action.danger }}>Yes, move to Seed</Text>
+                    </Pressable>
+                    <Pressable onPress={() => setConfirmDowngrade(false)}>
+                      <Text style={{ fontFamily: FONTS.sans, fontSize: 13, color: t.colors.text.secondary }}>Keep Bloom</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable onPress={() => setConfirmDowngrade(true)} style={{ paddingVertical: 8 }}>
+                  <Text style={{ fontFamily: FONTS.sans, fontSize: 13.5, color: t.colors.text.muted }}>Downgrade to Seed</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
         </View>
+
+        {/* Replay the first-run walkthrough */}
+        <Pressable onPress={resetOnboarding} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, marginBottom: 18 }}>
+          <Sparkles size={15} color={t.colors.text.secondary} strokeWidth={2} />
+          <Text style={{ fontFamily: FONTS.sans, fontSize: 14, color: t.colors.text.secondary }}>Replay the tour</Text>
+        </Pressable>
 
         {/* Account */}
         <SectionLabel style={{ marginBottom: 14 }}>Account</SectionLabel>
@@ -249,7 +302,7 @@ export function YouScreen() {
       </ScrollView>
 
       {authOpen && <AuthSheet onClose={() => setAuthOpen(false)} />}
-      <UpgradeScreen visible={upgradeOpen} onClose={() => setUpgradeOpen(false)} onActivate={() => { activatePremium(); setUpgradeOpen(false); }} />
+      <UpgradeScreen visible={upgradeOpen} onClose={() => setUpgradeOpen(false)} onActivate={(b) => { activatePremium(b); setUpgradeOpen(false); }} />
     </View>
   );
 }

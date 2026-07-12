@@ -7,6 +7,7 @@ export {
   dbUpsertRestTask,
   dbDeleteRestTask,
   dbUpsertSettings,
+  dbSetHabitDay,
   dbBulkPush,
   type DbSettings,
 } from "@todo/shared";

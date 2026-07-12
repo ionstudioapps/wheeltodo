@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp, FREE_LIMITS, type RestTask, type RestCategory } from "@/context/AppContext";
 import { useSubscription } from "@/hooks/useSubscription";
-import { WIcon, Headline, SpinPill, Sheet, SectionLabel, ConfettiField } from "@/components/ui/kit";
+import { WIcon, Headline, SpinPill, Sheet, SectionLabel, ConfettiBurst, Ring } from "@/components/ui/kit";
 import { UpgradeScreen, BloomNudge } from "@/components/Upgrade";
 import { Toast, useToast } from "@/components/ui/Toast";
 import { useDragReorder } from "@/hooks/useDragReorder";
@@ -65,53 +65,6 @@ function Heatmap({ countsByDay }: { countsByDay: Map<string, number> }) {
         </div>
       ))}
     </div>
-  );
-}
-
-/* ── Progress ring ───────────────────────────────────────────────────────── */
-
-function Ring({ progress, size = 64, stroke = 7, color = "var(--accent)", children }: {
-  progress: number; size?: number; stroke?: number; color?: string; children?: React.ReactNode;
-}) {
-  const r = (size - stroke) / 2, C = 2 * Math.PI * r;
-  return (
-    <div style={{ position: "relative", width: size, height: size }}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--bg-sunk)" strokeWidth={stroke} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
-          strokeDasharray={C} strokeDashoffset={C * (1 - progress)} style={{ transition: "stroke-dashoffset 400ms var(--ease-out)" }} />
-      </svg>
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{children}</div>
-    </div>
-  );
-}
-
-/* ── Quick rest chip ──────────────────────────────────────────────────────
-   The ten preset rest activities (Get a coffee, Go for a walk, ...) — a
-   no-commitment, one-tap way to log rest without adding a tracked habit.
-   Still counts toward restMinutesToday / the day's streak. ────────────── */
-
-function QuickRestChip({ task, onToggle }: { task: RestTask; onToggle: () => void }) {
-  const done = task.completedToday;
-  const color = `var(${categoryVar(task.category)})`;
-  return (
-    <button onClick={onToggle} className="wt-press" style={{
-      display: "inline-flex", alignItems: "center", gap: 7, borderRadius: "var(--r-tag)",
-      padding: "9px 14px 9px 10px", border: "none", cursor: "pointer",
-      background: done ? color : "var(--bg-card)",
-      boxShadow: done ? "none" : "var(--shadow-card)",
-    }}>
-      <span style={{
-        width: 20, height: 20, borderRadius: 999, flexShrink: 0,
-        background: done ? "var(--bg-card)" : color, opacity: done ? 0.9 : 0.35,
-      }} />
-      <span style={{ fontSize: 13.5, fontWeight: 500, color: done ? "var(--text-on-ink)" : "var(--text-primary)", whiteSpace: "nowrap" }}>
-        {task.name}
-      </span>
-      <span style={{ fontSize: 11.5, color: done ? "var(--text-on-ink)" : "var(--text-muted)", opacity: done ? 0.75 : 1 }}>
-        {task.durationMinutes}m
-      </span>
-    </button>
   );
 }
 
@@ -182,6 +135,19 @@ export function HabitsTab() {
   const [name, setName] = useState("");
   const [cat, setCat] = useState<RestCategory>("Physical");
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
+  // One-shot celebration when the final habit of the day is checked off.
+  const [celebrate, setCelebrate] = useState(false);
+  const celebrateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleToggleHabit(h: RestTask) {
+    const completesAll = !h.completedToday && habits.every((x) => x.id === h.id || x.completedToday);
+    toggleRestTask(h.id);
+    if (completesAll) {
+      setCelebrate(true);
+      if (celebrateTimer.current) clearTimeout(celebrateTimer.current);
+      celebrateTimer.current = setTimeout(() => setCelebrate(false), 1800);
+    }
+  }
 
   function handleDeleteHabit(habit: RestTask) {
     removeRestTask(habit.id);
@@ -191,7 +157,6 @@ export function HabitsTab() {
   }
 
   const habits = restTasks.filter((t) => !t.isPreset);
-  const quickRest = restTasks.filter((t) => t.isPreset);
   const { containerRef: habitListRef, dragIndex: habitDragIndex, overIndex: habitOverIndex, startDrag: startHabitDrag } = useDragReorder(habits, reorderRestTasks);
 
   // Seed three starter habits on first visit
@@ -242,7 +207,7 @@ export function HabitsTab() {
 
   return (
     <div className="wt-page wt-page--narrow" style={{ position: "relative" }}>
-      {allDone && <ConfettiField count={24} />}
+      <ConfettiBurst active={celebrate} />
 
       <div style={{ position: "relative", zIndex: 2, paddingTop: 10 }}>
         {allDone ? (
@@ -265,12 +230,10 @@ export function HabitsTab() {
           </div>
         )}
 
-        {/* Heatmap */}
-        {!allDone && (
-          <div style={{ paddingTop: 24 }}>
-            <Heatmap countsByDay={countsByDay} />
-          </div>
-        )}
+        {/* Heatmap — always visible, including after finishing the day */}
+        <div style={{ paddingTop: 24 }}>
+          <Heatmap countsByDay={countsByDay} />
+        </div>
 
         {/* Stat cards */}
         <div style={{ paddingTop: 24, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
@@ -286,19 +249,6 @@ export function HabitsTab() {
           ))}
         </div>
 
-        {/* Quick rest — no-commitment, one-tap presets */}
-        <div style={{ paddingTop: 26 }}>
-          <SectionLabel style={{ margin: "0 0 4px 2px", fontSize: 12 }}>Quick rest</SectionLabel>
-          <p style={{ margin: "0 0 12px 2px", fontSize: 13, fontWeight: 300, color: "var(--text-muted)" }}>
-            Rest counts. Same streak.
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {quickRest.map((task) => (
-              <QuickRestChip key={task.id} task={task} onToggle={() => toggleRestTask(task.id)} />
-            ))}
-          </div>
-        </div>
-
         {/* Today list */}
         <div style={{ paddingTop: 26 }}>
           <SectionLabel style={{ margin: "0 0 12px 2px", fontSize: 12 }}>Today</SectionLabel>
@@ -311,7 +261,7 @@ export function HabitsTab() {
                 week={weekFor(h.id)}
                 dragging={habitDragIndex === i}
                 dropTarget={habitDragIndex !== null && habitOverIndex === i && habitOverIndex !== habitDragIndex}
-                onToggle={() => toggleRestTask(h.id)}
+                onToggle={() => handleToggleHabit(h)}
                 onDelete={() => handleDeleteHabit(h)}
                 onGripPointerDown={() => startHabitDrag(i)}
               />
@@ -409,7 +359,7 @@ export function HabitsTab() {
         </Sheet>
       )}
 
-      {upgradeOpen && <UpgradeScreen onClose={() => setUpgradeOpen(false)} onActivate={() => { void activate(); setUpgradeOpen(false); }} />}
+      {upgradeOpen && <UpgradeScreen onClose={() => setUpgradeOpen(false)} onActivate={(b) => { void activate(b); setUpgradeOpen(false); }} />}
       <Toast toast={toast} onUndo={() => { toast?.onUndo?.(); dismissToast(); }} onDismiss={dismissToast} />
     </div>
   );

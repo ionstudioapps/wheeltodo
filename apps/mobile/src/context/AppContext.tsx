@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode, useRef } from 'react';
-import { getSupabaseClient, dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted, dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings } from '@todo/shared';
+import { getSupabaseClient, dbLoad, dbUpsertTask, dbDeleteTask, dbInsertCompleted, dbDeleteCompleted, dbUpsertRestTask, dbDeleteRestTask, dbUpsertSettings, dbSetHabitDay } from '@todo/shared';
 import type { ThemeName } from '@todo/shared/themes';
 import { ACHIEVEMENT_DEFS, getUnlockedTierIds, type AchievementValues } from '../utils/achievements';
+import { syncScheduledNotifications } from '../utils/notifications';
 
 export interface Task {
   id: string;
@@ -41,6 +42,7 @@ export interface PomodoroSession {
 export type RestCategory = 'Physical' | 'Mental' | 'Social' | 'Nourishment' | 'My Tasks';
 export type DailyMood = 'drained' | 'okay' | 'restless' | null;
 export type RestGoalTier = 'easy' | 'standard' | 'dedicated';
+export type PlanBilling = 'monthly' | 'annual';
 
 export const REST_GOAL_MINUTES: Record<RestGoalTier, number> = {
   easy: 15,
@@ -108,6 +110,7 @@ interface AppContextType {
   setDailyGoal: (goal: number) => void;
   notificationsEnabled: boolean;
   setNotificationsEnabled: (enabled: boolean) => void;
+  // Gates the haptic ticks while the wheel spins ("Wheel haptics" on the You tab).
   wheelSoundEnabled: boolean;
   setWheelSoundEnabled: (enabled: boolean) => void;
 
@@ -165,13 +168,16 @@ interface AppContextType {
 
   hasSeenOnboarding: boolean;
   markOnboardingSeen: () => void;
+  resetOnboarding: () => void;
 
   // ── Design-port additions (parity with apps/web) ──
   theme: ThemeName;
   setTheme: (t: ThemeName) => void;
   isPremium: boolean;
-  activatePremium: () => void;
-  seedTasks: (tasks: Task[]) => void;
+  activatePremium: (billing?: PlanBilling) => void;
+  deactivatePremium: () => void;
+  planBilling: PlanBilling | null;
+  setPlanBilling: (b: PlanBilling) => void;
   cancelPomodoro: () => void;
   spinsToday: number;
   aiUsesToday: number;
@@ -221,6 +227,7 @@ const STORAGE_KEYS = {
   hasSeenOnboarding: 'wheelTodo.hasSeenOnboarding',
   theme: 'wheelTodo.theme',
   isPremium: 'wheelTodo.isPremium',
+  planBilling: 'wheelTodo.planBilling',
   spinsToday: 'wheelTodo.spinsToday',
   spinsTodayDate: 'wheelTodo.spinsTodayDate',
   aiUsesToday: 'wheelTodo.aiUsesToday',
@@ -240,14 +247,9 @@ export const COLORS = [
   '#EDB590', '#E59880', '#9DC4BC', '#F0D29D', '#ADA8CC', '#D4A5C8', '#BCD4A5', '#EDBDAC',
 ];
 
-const defaultTasks: Task[] = [
-  { id: '1', name: 'Write blog post',  minutes: 25, color: '#E59880', icon: 'PenLine'   },
-  { id: '2', name: 'Review code',      minutes: 15, color: '#EDB590', icon: 'Code'      },
-  { id: '3', name: 'Design mockups',   minutes: 30, color: '#9DC4BC', icon: 'Palette'   },
-  { id: '4', name: 'Team meeting',     minutes: 20, color: '#F0D29D', icon: 'Users'     },
-  { id: '5', name: 'Email replies',    minutes: 10, color: '#ADA8CC', icon: 'Mail'      },
-  { id: '6', name: 'Research',         minutes: 25, color: '#D4A5C8', icon: 'BookOpen'  },
-];
+// New installs start with an empty wheel — the walkthrough hands off to the
+// "Add your first task" empty state rather than seeding demo tasks.
+const defaultTasks: Task[] = [];
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
@@ -383,10 +385,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (onboardingRaw) setHasSeenOnboarding(JSON.parse(onboardingRaw));
 
         // Design-port additions
-        const [[, themeRaw], [, premiumRaw], [, spinsRaw], [, spinsDateRaw],
+        const [[, themeRaw], [, premiumRaw], [, billingRaw], [, spinsRaw], [, spinsDateRaw],
                [, aiRaw], [, aiDateRaw], [, voiceRaw], [, voiceKeyRaw],
                [, brainRaw], [, habitHistRaw], [, notifRaw]] = await AsyncStorage.multiGet([
-          STORAGE_KEYS.theme, STORAGE_KEYS.isPremium,
+          STORAGE_KEYS.theme, STORAGE_KEYS.isPremium, STORAGE_KEYS.planBilling,
           STORAGE_KEYS.spinsToday, STORAGE_KEYS.spinsTodayDate,
           STORAGE_KEYS.aiUsesToday, STORAGE_KEYS.aiUsesTodayDate,
           STORAGE_KEYS.voiceUsesMonth, STORAGE_KEYS.voiceUsesMonthKey,
@@ -394,6 +396,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ]);
         if (themeRaw) setThemeState(JSON.parse(themeRaw) as ThemeName);
         if (premiumRaw) setIsPremium(JSON.parse(premiumRaw));
+        if (billingRaw) setPlanBillingState(JSON.parse(billingRaw));
         if (spinsRaw && spinsDateRaw && JSON.parse(spinsDateRaw) === todayStr) setSpinsToday(JSON.parse(spinsRaw));
         if (aiRaw && aiDateRaw && JSON.parse(aiDateRaw) === todayStr) setAiUsesToday(JSON.parse(aiRaw));
         const monthKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
@@ -629,10 +632,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const uid = syncRef.current.userId;
     if (!uid) return;
     try {
-      const { tasks: dbTasks, completedTasks: dbCompleted, settings } = await dbLoad(uid);
+      const { tasks: dbTasks, completedTasks: dbCompleted, customRestTasks, habitHistory: dbHistory, settings } = await dbLoad(uid);
       if (dbTasks.length > 0) setTasks(dbTasks);
       if (dbCompleted.length > 0) {
         setCompletedTasks(dbCompleted.map((ct) => ({ ...ct, completedAt: new Date(ct.completedAt) })));
+      }
+      if (customRestTasks.length > 0) {
+        // Cloud is the source for the custom habit list; per-day completion
+        // state and any locally created (not yet pushed) habits stay local.
+        setRestTasks((prev) => {
+          const localById = new Map(prev.filter((t) => !t.isPreset).map((t) => [t.id, t]));
+          const merged: RestTask[] = customRestTasks.map((rt) => ({
+            id: rt.id, name: rt.name, isPreset: false,
+            completedToday: localById.get(rt.id)?.completedToday ?? false,
+            durationMinutes: rt.durationMinutes,
+            category: rt.category as RestCategory,
+          }));
+          const cloudIds = new Set(merged.map((m) => m.id));
+          const localOnly = prev.filter((t) => !t.isPreset && !cloudIds.has(t.id));
+          return [...prev.filter((t) => t.isPreset), ...merged, ...localOnly];
+        });
+      }
+      if (Object.keys(dbHistory).length > 0) {
+        setHabitHistory((local) => {
+          const next: Record<string, string[]> = { ...local };
+          Object.entries(dbHistory).forEach(([habitId, days]) => {
+            next[habitId] = Array.from(new Set([...(next[habitId] ?? []), ...days]));
+          });
+          AsyncStorage.setItem(STORAGE_KEYS.habitHistory, JSON.stringify(next)).catch(() => {});
+          return next;
+        });
       }
       if (settings) {
         setDailyGoal(settings.daily_goal);
@@ -650,6 +679,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCloudLoading(true);
     refreshFromCloud().finally(() => setCloudLoading(false));
   }, [supabaseUserId, loaded, refreshFromCloud]);
+
+  // Keep OS-scheduled notifications (daily nudge, weekly recap) in step with
+  // the toggles. No-ops in Expo Go, where scheduling isn't available.
+  useEffect(() => {
+    if (!loaded) return;
+    syncScheduledNotifications(notifPrefs).catch(() => {});
+  }, [notifPrefs, loaded]);
 
   // Sync settings whenever they change
   useEffect(() => {
@@ -799,6 +835,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (task) {
         const nowDone = !task.completedToday;
         const todayStr = new Date().toDateString();
+        const { userId: uid } = syncRef.current;
+        if (uid && !task.isPreset) dbSetHabitDay(uid, id, todayStr, nowDone);
         setHabitHistory((h) => {
           const existing = h[id] ?? [];
           const next = {
@@ -906,15 +944,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEYS.theme, JSON.stringify(t)).catch(() => {});
   }, []);
 
-  const activatePremium = useCallback(() => {
-    setIsPremium(true);
-    AsyncStorage.setItem(STORAGE_KEYS.isPremium, JSON.stringify(true)).catch(() => {});
+  const [planBilling, setPlanBillingState] = useState<PlanBilling | null>(null);
+  const setPlanBilling = useCallback((b: PlanBilling) => {
+    setPlanBillingState(b);
+    AsyncStorage.setItem(STORAGE_KEYS.planBilling, JSON.stringify(b)).catch(() => {});
   }, []);
 
-  const seedTasks = useCallback((seeded: Task[]) => {
-    setTasks(seeded);
+  const activatePremium = useCallback((billing: PlanBilling = 'monthly') => {
+    setIsPremium(true);
+    setPlanBillingState(billing);
+    AsyncStorage.multiSet([
+      [STORAGE_KEYS.isPremium, JSON.stringify(true)],
+      [STORAGE_KEYS.planBilling, JSON.stringify(billing)],
+    ]).catch(() => {});
     const { userId: uid } = syncRef.current;
-    if (uid) seeded.forEach((t, i) => dbUpsertTask(uid, t, i));
+    if (uid) dbUpsertSettings(uid, { isPremium: true });
+  }, []);
+
+  // Downgrade to Seed. Existing over-cap habits/tasks stay usable (adding new
+  // ones is what the caps gate); the UI copy covers this.
+  const deactivatePremium = useCallback(() => {
+    setIsPremium(false);
+    setPlanBillingState(null);
+    AsyncStorage.multiSet([
+      [STORAGE_KEYS.isPremium, JSON.stringify(false)],
+      [STORAGE_KEYS.planBilling, JSON.stringify(null)],
+    ]).catch(() => {});
+    const { userId: uid } = syncRef.current;
+    if (uid) dbUpsertSettings(uid, { isPremium: false });
   }, []);
 
   const registerAiUse = useCallback(() => {
@@ -970,12 +1027,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const hasTask = completedTasks.some((t) => { const d = new Date(t.completedAt); return d >= today && d < tomorrow; });
-    const hasRest = completedRestDays.some((d) => d >= today && d < tomorrow);
+    // Any logged rest counts as showing up — a single quick rest preserves the
+    // streak (partialRestDays covers rest below the daily rest goal).
+    const hasRest = completedRestDays.some((d) => d >= today && d < tomorrow)
+      || partialRestDays.some((p) => p.date >= today && p.date < tomorrow);
     return hasTask || hasRest;
-  }, [completedTasks, completedRestDays]);
+  }, [completedTasks, completedRestDays, partialRestDays]);
 
   const streak = useMemo(() => {
-    if (completedTasks.length === 0 && completedRestDays.length === 0) return 0;
+    if (completedTasks.length === 0 && completedRestDays.length === 0 && partialRestDays.length === 0) return 0;
     let count = 0;
     const base = new Date();
     base.setHours(0, 0, 0, 0);
@@ -985,11 +1045,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const next = new Date(day);
       next.setDate(next.getDate() + 1);
       const hasTask = completedTasks.some((t) => { const d = new Date(t.completedAt); return d >= day && d < next; });
-      const hasRest = completedRestDays.some((d) => d >= day && d < next);
+      const hasRest = completedRestDays.some((d) => d >= day && d < next)
+        || partialRestDays.some((p) => p.date >= day && p.date < next);
       if (hasTask || hasRest) { count++; } else { break; }
     }
     return count;
-  }, [completedTasks, completedRestDays]);
+  }, [completedTasks, completedRestDays, partialRestDays]);
 
   const bestStreak = useMemo(() => {
     const dates = new Set<number>();
@@ -1000,6 +1061,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     completedRestDays.forEach((d) => {
       const day = new Date(d);
+      day.setHours(0, 0, 0, 0);
+      dates.add(day.getTime());
+    });
+    partialRestDays.forEach((p) => {
+      const day = new Date(p.date);
       day.setHours(0, 0, 0, 0);
       dates.add(day.getTime());
     });
@@ -1017,7 +1083,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
     return best;
-  }, [completedTasks, completedRestDays]);
+  }, [completedTasks, completedRestDays, partialRestDays]);
 
   const restStreak = useMemo(() => {
     if (completedRestDays.length === 0) return 0;
@@ -1039,6 +1105,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const dates = new Set<number>();
     completedRestDays.forEach((d) => {
       const day = new Date(d);
+      day.setHours(0, 0, 0, 0);
+      dates.add(day.getTime());
+    });
+    partialRestDays.forEach((p) => {
+      const day = new Date(p.date);
       day.setHours(0, 0, 0, 0);
       dates.add(day.getTime());
     });
@@ -1110,8 +1181,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     restGoalTier, setRestGoalTier,
     restMinutesToday, restGoalMinutes,
     restStreak, bestRestStreak,
-    hasSeenOnboarding, markOnboardingSeen: () => setHasSeenOnboarding(true),
-    theme, setTheme, isPremium, activatePremium, seedTasks, cancelPomodoro,
+    hasSeenOnboarding,
+    markOnboardingSeen: () => setHasSeenOnboarding(true),
+    resetOnboarding: () => setHasSeenOnboarding(false),
+    theme, setTheme, isPremium, activatePremium, deactivatePremium, planBilling, setPlanBilling, cancelPomodoro,
     spinsToday, aiUsesToday, registerAiUse,
     voiceUsesThisMonth, registerVoiceUse,
     lastBrainGameAt, registerBrainGame,

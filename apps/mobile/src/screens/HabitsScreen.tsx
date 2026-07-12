@@ -1,11 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useEffect, useMemo, useState } from 'react';
-import { type GestureResponderHandlers, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, type GestureResponderHandlers, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Check, GripVertical, Plus, Trash2 } from 'lucide-react-native';
 import { useDragReorder } from '../hooks/useDragReorder';
 import { useApp, FREE_LIMITS, type RestCategory, type RestTask } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
-import { ConfettiField, Headline, Ring, SectionLabel, Sheet, SpinPill, cardShadow, useTokens } from '../components/kit';
+import { ConfettiBurst, Headline, Ring, SectionLabel, Sheet, SpinPill, cardShadow, useTokens } from '../components/kit';
 import { BloomChip, BloomNudge, UpgradeScreen } from '../components/Upgrade';
 import { Toast, useToast } from '../components/Toast';
 import { SkeletonRows } from '../components/Skeleton';
@@ -81,33 +81,6 @@ function Heatmap({ countsByDay }: { countsByDay: Map<string, number> }) {
   );
 }
 
-/* ── Quick rest chip ──────────────────────────────────────────────────────
-   The ten preset rest activities (Get a coffee, Go for a walk, ...) — a
-   no-commitment, one-tap way to log rest without adding a tracked habit.
-   Still counts toward restMinutesToday / the day's streak. ────────────── */
-
-function QuickRestChip({ task, onToggle }: { task: RestTask; onToggle: () => void }) {
-  const t = useTokens();
-  const done = task.completedToday;
-  const color = categoryColor(t, task.category);
-  return (
-    <Pressable onPress={onToggle} style={{
-      flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 999,
-      paddingVertical: 9, paddingLeft: 10, paddingRight: 14,
-      backgroundColor: done ? color : t.colors.bg.card,
-      ...(done ? {} : cardShadow(t.dark)),
-    }}>
-      <View style={{ width: 20, height: 20, borderRadius: 999, backgroundColor: done ? t.colors.bg.card : color, opacity: done ? 0.9 : 0.35 }} />
-      <Text style={{ fontFamily: FONTS.sansMedium, fontSize: 13.5, color: done ? t.colors.text.onInk : t.colors.text.primary }}>
-        {task.name}
-      </Text>
-      <Text style={{ fontFamily: FONTS.sans, fontSize: 11.5, color: done ? t.colors.text.onInk : t.colors.text.muted, opacity: done ? 0.75 : 1 }}>
-        {task.durationMinutes}m
-      </Text>
-    </Pressable>
-  );
-}
-
 /* ── Habit row ───────────────────────────────────────────────────────────── */
 
 function HabitRow({ habit, streakDays, week, gripHandlers, onToggle, onDelete }: {
@@ -125,7 +98,7 @@ function HabitRow({ habit, streakDays, week, gripHandlers, onToggle, onDelete }:
       ...cardShadow(t.dark),
     }}>
       {gripHandlers && (
-        <View {...gripHandlers} hitSlop={{ top: 12, bottom: 12, left: 12, right: 6 }} style={{ marginLeft: -5, marginRight: -7 }}>
+        <View {...gripHandlers} accessible accessibilityLabel={`Reorder ${habit.name}`} hitSlop={{ top: 12, bottom: 12, left: 12, right: 6 }} style={{ marginLeft: -5, marginRight: -7 }}>
           <GripVertical size={16} color={t.colors.text.muted} strokeWidth={1.8} />
         </View>
       )}
@@ -151,10 +124,10 @@ function HabitRow({ habit, streakDays, week, gripHandlers, onToggle, onDelete }:
           ))}
         </View>
       </View>
-      <Pressable hitSlop={8} onPress={onDelete}>
+      <Pressable hitSlop={8} onPress={onDelete} accessibilityRole="button" accessibilityLabel={`Delete ${habit.name}`}>
         <Trash2 size={15} color={t.colors.text.muted} strokeWidth={1.8} />
       </Pressable>
-      <Pressable hitSlop={8} onPress={onToggle} style={{
+      <Pressable hitSlop={8} onPress={onToggle} accessibilityRole="button" accessibilityState={{ checked: done }} accessibilityLabel={`Mark ${habit.name} ${done ? 'not done' : 'done'}`} style={{
         width: 30, height: 30, borderRadius: 999,
         backgroundColor: done ? color : 'transparent',
         borderWidth: done ? 0 : 1.5, borderColor: t.colors.hairline,
@@ -182,6 +155,20 @@ export function HabitsScreen() {
     setRefreshing(false);
   }
 
+  // One-shot celebration when the final habit of the day is checked off.
+  const [celebrate, setCelebrate] = useState(false);
+  const celebrateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleToggleHabit(h: RestTask) {
+    const completesAll = !h.completedToday && habits.every((x) => x.id === h.id || x.completedToday);
+    toggleRestTask(h.id);
+    if (completesAll) {
+      setCelebrate(true);
+      if (celebrateTimer.current) clearTimeout(celebrateTimer.current);
+      celebrateTimer.current = setTimeout(() => setCelebrate(false), 1800);
+    }
+  }
+
   const [addOpen, setAddOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [name, setName] = useState('');
@@ -189,8 +176,7 @@ export function HabitsScreen() {
   const { toast, show: showToast, dismiss: dismissToast } = useToast();
 
   const habits = restTasks.filter((h) => !h.isPreset);
-  const quickRest = restTasks.filter((h) => h.isPreset);
-  const { setRowRef, makePanResponder, dragIndex, overIndex } = useDragReorder(habits, reorderRestTasks);
+  const { setRowRef, makePanResponder, dragIndex, dragY, shiftFor } = useDragReorder(habits, reorderRestTasks);
 
   function handleDeleteHabit(habit: RestTask) {
     removeRestTask(habit.id);
@@ -247,7 +233,7 @@ export function HabitsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.bg.screen }}>
-      {allDone && <ConfettiField count={24} />}
+      <ConfettiBurst active={celebrate} />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 40 }}
         refreshControl={user ? (
@@ -264,7 +250,7 @@ export function HabitsScreen() {
           )}
         </View>
 
-        {allDone ? (
+        {allDone && (
           <View style={{ alignItems: 'center', paddingVertical: 30 }}>
             <Ring progress={1} size={150} stroke={13} color={t.colors.action.success}>
               <View style={{ alignItems: 'center' }}>
@@ -273,11 +259,12 @@ export function HabitsScreen() {
               </View>
             </Ring>
           </View>
-        ) : (
-          <View style={{ paddingTop: 24 }}>
-            <Heatmap countsByDay={countsByDay} />
-          </View>
         )}
+
+        {/* Heatmap — always visible, including after finishing the day */}
+        <View style={{ paddingTop: allDone ? 0 : 24 }}>
+          <Heatmap countsByDay={countsByDay} />
+        </View>
 
         {/* Stat cards */}
         <View style={{ flexDirection: 'row', gap: 10, paddingTop: 24 }}>
@@ -289,32 +276,22 @@ export function HabitsScreen() {
           ))}
         </View>
 
-        {/* Quick rest — no-commitment, one-tap presets */}
-        <View style={{ paddingTop: 26 }}>
-          <SectionLabel style={{ fontSize: 12, marginBottom: 4, marginLeft: 2 }}>Quick rest</SectionLabel>
-          <Text style={{ fontFamily: FONTS.sansLight, fontSize: 13, color: t.colors.text.muted, marginBottom: 12, marginLeft: 2 }}>
-            Rest counts. Same streak.
-          </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {quickRest.map((task) => (
-              <QuickRestChip key={task.id} task={task} onToggle={() => toggleRestTask(task.id)} />
-            ))}
-          </View>
-        </View>
-
         {/* Today list */}
         <View style={{ paddingTop: 26 }}>
           <SectionLabel style={{ fontSize: 12, marginBottom: 12, marginLeft: 2 }}>Today</SectionLabel>
           <View style={{ gap: 10 }}>
             {habits.map((h, i) => (
-              <View
+              <Animated.View
                 key={h.id}
-                ref={(r) => setRowRef(i, r)}
+                ref={(r) => setRowRef(i, r as unknown as View)}
                 style={{
-                  opacity: dragIndex === i ? 0.5 : 1,
-                  borderTopWidth: 2,
-                  borderTopColor: dragIndex !== null && overIndex === i && overIndex !== dragIndex
-                    ? t.colors.accent.main : 'transparent',
+                  transform: [{ translateY: dragIndex === i ? dragY : shiftFor(i) }],
+                  zIndex: dragIndex === i ? 10 : 0,
+                  ...(dragIndex === i ? {
+                    opacity: 0.96,
+                    shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 16,
+                    shadowOffset: { width: 0, height: 8 }, elevation: 8,
+                  } : {}),
                 }}
               >
                 <HabitRow
@@ -322,10 +299,10 @@ export function HabitsScreen() {
                   streakDays={habitStreak(h.id)}
                   week={weekFor(h.id)}
                   gripHandlers={makePanResponder(i).panHandlers}
-                  onToggle={() => toggleRestTask(h.id)}
+                  onToggle={() => handleToggleHabit(h)}
                   onDelete={() => handleDeleteHabit(h)}
                 />
-              </View>
+              </Animated.View>
             ))}
 
             {cloudLoading && habits.length === 0 && <SkeletonRows count={2} height={88} />}
@@ -413,7 +390,7 @@ export function HabitsScreen() {
         </Sheet>
       )}
 
-      <UpgradeScreen visible={upgradeOpen} onClose={() => setUpgradeOpen(false)} onActivate={() => { activatePremium(); setUpgradeOpen(false); }} />
+      <UpgradeScreen visible={upgradeOpen} onClose={() => setUpgradeOpen(false)} onActivate={(b) => { activatePremium(b); setUpgradeOpen(false); }} />
       <Toast toast={toast} onUndo={() => { toast?.onUndo?.(); dismissToast(); }} onDismiss={dismissToast} />
     </View>
   );

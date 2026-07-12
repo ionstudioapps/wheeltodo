@@ -19,10 +19,10 @@
         "start",
         "--web",
         "--port",
-        "8081"
+        "8090"
       ],
       "cwd": "apps/mobile",
-      "port": 8081
+      "port": 8090
     }
   ]
 }

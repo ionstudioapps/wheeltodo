@@ -217,6 +217,24 @@ export function ConfettiBurst({ active }: { active: boolean }) {
   );
 }
 
+/* ── Progress ring ───────────────────────────────────────────────────────── */
+
+export function Ring({ progress, size = 64, stroke = 7, color = "var(--accent)", children }: {
+  progress: number; size?: number; stroke?: number; color?: string; children?: ReactNode;
+}) {
+  const r = (size - stroke) / 2, C = 2 * Math.PI * r;
+  return (
+    <div style={{ position: "relative", width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--bg-sunk)" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={C} strokeDashoffset={C * (1 - progress)} style={{ transition: "stroke-dashoffset 400ms var(--ease-out)" }} />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>{children}</div>
+    </div>
+  );
+}
+
 /* ── The wheel ───────────────────────────────────────────────────────────── */
 
 export interface WheelSlice {
