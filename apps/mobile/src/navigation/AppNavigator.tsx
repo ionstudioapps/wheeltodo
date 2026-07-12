@@ -24,14 +24,14 @@ const TAB_ICONS = { Tasks: LifeBuoy, Habits: LayoutGrid, You: User } as const;
 
 /* ── Header (streak + avatar) ────────────────────────────────────────────── */
 
-function Header({ onStreak, onAvatar }: { onStreak: () => void; onAvatar: () => void }) {
+function Header({ onStreak }: { onStreak: () => void }) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
-  const { streak, user } = useApp();
+  const { streak } = useApp();
 
   return (
     <View style={{
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start',
       paddingTop: insets.top + 6, paddingBottom: 4, paddingHorizontal: 22,
       backgroundColor: t.colors.bg.screen,
     }}>
@@ -39,15 +39,6 @@ function Header({ onStreak, onAvatar }: { onStreak: () => void; onAvatar: () => 
         <Flame size={18} color={t.colors.accent.main} strokeWidth={2.2} />
         <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 15, color: t.colors.text.primary, fontVariant: ['tabular-nums'] }}>
           {streak}
-        </Text>
-      </Pressable>
-      <Pressable onPress={onAvatar} hitSlop={8} accessibilityRole="button" accessibilityLabel="Profile" style={{
-        width: 42, height: 42, borderRadius: 21,
-        backgroundColor: t.colors.lavender, alignItems: 'center', justifyContent: 'center',
-        borderWidth: 3, borderColor: t.colors.bg.screen,
-      }}>
-        <Text style={{ fontFamily: FONTS.sansSemi, fontSize: 14, color: t.colors.text.onInk }}>
-          {user?.initials ?? 'IO'}
         </Text>
       </Pressable>
     </View>
@@ -68,11 +59,8 @@ export function AppNavigator() {
         screenOptions={({ route }) => {
           const Icon = TAB_ICONS[route.name as keyof TabParamList];
           return {
-            header: ({ navigation }) => (
-              <Header
-                onStreak={() => setStreakOpen(true)}
-                onAvatar={() => navigation.navigate('You')}
-              />
+            header: () => (
+              <Header onStreak={() => setStreakOpen(true)} />
             ),
             tabBarActiveTintColor: t.colors.text.primary,
             tabBarInactiveTintColor: t.colors.text.muted,

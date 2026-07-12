@@ -5,7 +5,7 @@ import { useApp, COLORS, FREE_LIMITS, type Task } from "@/context/AppContext";
 import { useSubscription } from "@/hooks/useSubscription";
 import { fnUrl, fnHeaders } from "@/lib/functions";
 import {
-  WIcon, Headline, SpinPill, Sheet, SectionLabel, TaskWheel, WheelHub,
+  WIcon, Headline, SpinPill, Sheet, SectionLabel, TaskWheel,
   ConfettiBurst, TASK_ICON_PATHS, TASK_CATEGORIES, formatMmSs,
 } from "@/components/ui/kit";
 import { FocusMode } from "@/components/FocusMode";
@@ -669,19 +669,35 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
   const wheelSize = 300;
 
   const wheel = (size: number) => (
-    <TaskWheel
-      slices={slices} size={size} rotation={rotation}
-      hub={<WheelHub done={todayCompleted.length} total={todayCompleted.length + tasks.length} />}
-      onSliceClick={(s) => { const t = tasks.find((x) => x.id === s.id); if (t && !spinning) setPicked(t); }}
-    />
+    <TaskWheel slices={slices} size={size} rotation={rotation} spinning={spinning} onClick={spinWheel} />
+  );
+
+  const todayCounter = tasks.length > 0 && (
+    <div style={{ textAlign: "center", lineHeight: 1 }}>
+      <div style={{ fontSize: 24, fontWeight: 600, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em" }}>
+        {todayCompleted.length}/{todayCompleted.length + tasks.length}
+      </div>
+      <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", color: "var(--text-muted)", marginTop: 4 }}>TODAY</div>
+    </div>
   );
 
   const spinCta = tasks.length === 0
     ? null
     : (
-      <SpinPill onClick={spinWheel} disabled={spinning || (!isPremium && spinsLeft === 0)}>
-        {spinning ? "Spinning…" : !isPremium && spinsLeft === 0 ? "All done for today" : "Spin the wheel"}
-      </SpinPill>
+      <div style={{ display: "flex", gap: 10, width: "100%" }}>
+        <div style={{ flex: 1 }}>
+          <SpinPill full onClick={spinWheel} disabled={spinning || (!isPremium && spinsLeft === 0)}>
+            {spinning ? "Spinning…" : !isPremium && spinsLeft === 0 ? "All done for today" : "Spin the wheel"}
+          </SpinPill>
+        </div>
+        <button onClick={() => setModalOpen(true)} aria-label="Add task" className="wt-press" style={{
+          width: 56, height: 56, borderRadius: "var(--r-pill)", background: "var(--bg-card)", border: "none",
+          boxShadow: "var(--shadow-card)", display: "inline-flex", alignItems: "center", justifyContent: "center",
+          color: "var(--text-primary)", cursor: "pointer", flexShrink: 0,
+        }}>
+          <WIcon name="plus" size={22} />
+        </button>
+      </div>
     );
 
   const spinCounter = !isPremium && tasks.length > 0 && (
@@ -745,6 +761,7 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
           {/* Wheel — mobile inline */}
           <div className="wt-mobile-only" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18, padding: "18px 0 0" }}>
             {tasks.length > 0 && wheel(Math.min(wheelSize, 320))}
+            {todayCounter}
             {spinCta}
             {spinCounter}
             <div style={{ minHeight: 20 }}>
@@ -762,6 +779,57 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
             {spinCounter}
             {metaLine}
           </div>
+
+          {/* AI quick actions + Brain starter banner */}
+          {tasks.length > 0 && (
+            <div style={{ marginTop: 22 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+                {([
+                  {
+                    icon: "wand", label: "Break into steps",
+                    capped: !isPremium && aiUsesToday >= FREE_LIMITS.aiBreakdownsPerDay,
+                    onClick: () => tasks[0] && handleBreakdown(tasks[0]),
+                  },
+                  {
+                    icon: "mic", label: "Tell me your day",
+                    capped: !isPremium && voiceUsesThisMonth >= FREE_LIMITS.voicePerMonth,
+                    onClick: handleVoiceOpen,
+                  },
+                ] as const).map((a) => (
+                  <button key={a.label} onClick={a.onClick} className="wt-press" style={{
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 7, height: 48,
+                    borderRadius: "var(--r-row)", border: "1.5px dashed var(--border-hairline)",
+                    color: "var(--text-secondary)", fontSize: 13.5, fontWeight: 500, background: "transparent", cursor: "pointer",
+                  }}>
+                    <WIcon name={a.icon} size={15} /> {a.label}
+                    {a.capped && (
+                      <span style={{ background: "var(--c-lavender)", borderRadius: "var(--r-tag)", padding: "2px 7px", fontSize: 9.5, fontWeight: 700, color: "var(--text-on-ink)", letterSpacing: "0.06em" }}>BLOOM</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button onClick={handleBrainOpen} className="wt-press" style={{
+                marginTop: 9, width: "100%", display: "flex", alignItems: "center", gap: 12,
+                borderRadius: 20, border: "none", background: "var(--bg-card)", boxShadow: "var(--shadow-card)",
+                padding: "14px 16px", cursor: "pointer", opacity: brainAvailable || !isPremium ? 1 : 0.6,
+              }}>
+                <span style={{ width: 38, height: 38, borderRadius: 999, flexShrink: 0, background: "var(--c-lavender-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <WIcon name="sparkle" size={18} color="var(--c-lavender)" />
+                </span>
+                <span style={{ flex: 1, textAlign: "left" }}>
+                  <span style={{ display: "block", fontSize: 14.5, fontWeight: 600, color: "var(--text-primary)" }}>Brain starter</span>
+                  <span style={{ display: "block", fontSize: 13, fontWeight: 300, color: "var(--text-secondary)", marginTop: 2 }}>
+                    {brainAvailable
+                      ? "A 30-second warm-up"
+                      : isPremium ? "Back tomorrow" : "1 a week on Seed"}
+                  </span>
+                </span>
+                {!brainAvailable && !isPremium && (
+                  <span style={{ background: "var(--c-lavender)", borderRadius: "var(--r-tag)", padding: "2px 7px", fontSize: 9.5, fontWeight: 700, color: "var(--text-on-ink)", letterSpacing: "0.06em" }}>BLOOM</span>
+                )}
+              </button>
+            </div>
+          )}
 
           {/* Loading skeleton — signed-in user, first cloud pull, nothing local */}
           {cloudLoading && tasks.length === 0 && (
@@ -813,49 +881,6 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
                   />
                 ))}
               </div>
-              {/* AI + warm-up quick actions */}
-              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
-                {([
-                  {
-                    icon: "wand", label: "Break into steps",
-                    capped: !isPremium && aiUsesToday >= FREE_LIMITS.aiBreakdownsPerDay,
-                    onClick: () => tasks[0] && handleBreakdown(tasks[0]),
-                  },
-                  {
-                    icon: "mic", label: "Tell me your day",
-                    capped: !isPremium && voiceUsesThisMonth >= FREE_LIMITS.voicePerMonth,
-                    onClick: handleVoiceOpen,
-                  },
-                ] as const).map((a) => (
-                  <button key={a.label} onClick={a.onClick} className="wt-press" style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 7, height: 48,
-                    borderRadius: "var(--r-row)", border: "1.5px dashed var(--border-hairline)",
-                    color: "var(--text-secondary)", fontSize: 13.5, fontWeight: 500, background: "transparent", cursor: "pointer",
-                  }}>
-                    <WIcon name={a.icon} size={15} /> {a.label}
-                    {a.capped && (
-                      <span style={{ background: "var(--c-lavender)", borderRadius: "var(--r-tag)", padding: "2px 7px", fontSize: 9.5, fontWeight: 700, color: "var(--text-on-ink)", letterSpacing: "0.06em" }}>BLOOM</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-              {/* Brain starter */}
-              <button onClick={handleBrainOpen} className="wt-press" style={{
-                marginTop: 9, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                height: 44, borderRadius: "var(--r-row)", border: "none", background: "var(--c-lavender-soft)",
-                color: "var(--text-primary)", fontSize: 13.5, fontWeight: 500,
-                cursor: "pointer", opacity: brainAvailable || !isPremium ? 1 : 0.5,
-              }}>
-                <WIcon name="sparkle" size={15} color="var(--c-lavender)" />
-                {brainAvailable
-                  ? "Brain starter · a 30-second warm-up"
-                  : isPremium
-                    ? "Brain starter · back tomorrow"
-                    : "Brain starter · 1 a week on Seed"}
-                {!brainAvailable && !isPremium && (
-                  <span style={{ background: "var(--c-lavender)", borderRadius: "var(--r-tag)", padding: "2px 7px", fontSize: 9.5, fontWeight: 700, color: "var(--text-on-ink)", letterSpacing: "0.06em" }}>BLOOM</span>
-                )}
-              </button>
             </div>
           )}
 
@@ -884,8 +909,9 @@ export function TasksTab({ addTaskOpen, onAddTaskOpenChange }: TasksTabProps) {
         </div>
 
         {/* Wheel — desktop side column */}
-        <div className="wt-desktop-only wt-tasks-side">
+        <div className="wt-desktop-only wt-tasks-side" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
           {tasks.length > 0 && wheel(340)}
+          {todayCounter}
         </div>
       </div>
 

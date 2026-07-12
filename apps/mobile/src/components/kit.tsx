@@ -249,11 +249,11 @@ export interface WheelSlice {
 
 const AnimatedG = Animated.createAnimatedComponent(G);
 
-export function TaskWheel({ slices, size = 300, rotation, hub, onSlicePress }: {
+export function TaskWheel({ slices, size = 300, rotation, hub, onPress }: {
   slices: WheelSlice[]; size?: number;
   rotation: Animated.Value;             // degrees
   hub?: ReactNode;
-  onSlicePress?: (s: WheelSlice) => void;
+  onPress?: () => void;                 // tapping anywhere on the wheel spins it
 }) {
   const t = useTokens();
   const r = size / 2, cx = r, cy = r;
@@ -281,7 +281,7 @@ export function TaskWheel({ slices, size = 300, rotation, hub, onSlicePress }: {
   const spin = rotation.interpolate({ inputRange: [0, 360], outputRange: ['0deg', '360deg'] });
 
   return (
-    <View style={{ width: size, height: size + 14, alignItems: 'center' }}>
+    <Pressable onPress={onPress} disabled={!onPress} style={{ width: size, height: size + 14, alignItems: 'center' }}>
       {/* pointer */}
       <View style={{ position: 'absolute', top: 0, zIndex: 4 }}>
         <Svg width={26} height={20} viewBox="0 0 26 20">
@@ -293,10 +293,7 @@ export function TaskWheel({ slices, size = 300, rotation, hub, onSlicePress }: {
           <Circle cx={cx} cy={cy} r={r - 1} fill={t.colors.bg.card} />
           {wedges.map((w) => (
             <G key={w.s.id}>
-              <Path
-                d={w.d} fill={w.s.color} stroke={t.colors.bg.screen} strokeWidth={2.5}
-                onPress={onSlicePress ? () => onSlicePress(w.s) : undefined}
-              />
+              <Path d={w.d} fill={w.s.color} stroke={t.colors.bg.screen} strokeWidth={2.5} />
               {w.s.iconPaths ? (
                 <G x={w.lx - iconSz / 2} y={w.ly - iconSz / 2} scale={iconSz / 24}>
                   {w.s.iconPaths.map((d, k) => (
@@ -326,7 +323,7 @@ export function TaskWheel({ slices, size = 300, rotation, hub, onSlicePress }: {
       }}>
         {hub}
       </View>
-    </View>
+    </Pressable>
   );
 }
 

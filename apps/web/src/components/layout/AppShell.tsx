@@ -105,19 +105,9 @@ export function AppShell({ children, user, activeTab, setActiveTab, onAddTask }:
             <WIcon name="flame" size={18} color="var(--accent)" />
             <span style={{ color: "var(--text-primary)", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{streak}</span>
           </button>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <button onClick={onAddTask} aria-label="Add task" className="wt-press" style={{ width: 42, height: 42, border: 0, background: "transparent", borderRadius: 999, color: "var(--text-primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-              <WIcon name="plus" size={22} />
-            </button>
-            <button onClick={() => setActiveTab("you")} aria-label="Profile" className="wt-press" style={{
-              width: 42, height: 42, borderRadius: 999, background: "var(--c-lavender)", color: "var(--text-on-ink)",
-              border: "none", display: "inline-flex", alignItems: "center", justifyContent: "center",
-              fontSize: 14, fontWeight: 600, cursor: "pointer",
-              boxShadow: "inset 0 0 0 3px var(--bg-screen), 0 0 0 1px var(--c-lavender)",
-            }}>
-              {initials}
-            </button>
-          </span>
+          <button onClick={onAddTask} aria-label="Add task" className="wt-press" style={{ width: 42, height: 42, border: 0, background: "transparent", borderRadius: 999, color: "var(--text-primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+            <WIcon name="plus" size={22} />
+          </button>
         </header>
 
         {/* Desktop top bar */}

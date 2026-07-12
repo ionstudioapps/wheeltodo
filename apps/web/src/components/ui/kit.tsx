@@ -245,9 +245,9 @@ export interface WheelSlice {
   iconPaths?: string[];
 }
 
-export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, hub, onSliceClick }: {
+export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, hub, onClick }: {
   slices: WheelSlice[]; size?: number; rotation?: number; spinning?: boolean;
-  hub?: ReactNode; onSliceClick?: (s: WheelSlice) => void;
+  hub?: ReactNode; onClick?: () => void;   // tapping anywhere on the wheel spins it
 }) {
   const r = size / 2, cx = r, cy = r;
   const n = Math.max(1, slices.length);
@@ -295,7 +295,13 @@ export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, 
   });
 
   return (
-    <div style={{ position: "relative", width: size, height: size + 14, display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
+    <div
+      onClick={onClick && !spinning ? onClick : undefined}
+      style={{
+        position: "relative", width: size, height: size + 14, display: "flex", alignItems: "flex-start", justifyContent: "center",
+        cursor: onClick && !spinning ? "pointer" : undefined,
+      }}
+    >
       {/* pointer */}
       <div ref={pointerRef} style={{
         position: "absolute", top: 0, zIndex: 4, filter: "drop-shadow(0 2px 2px var(--bg-overlay))",
@@ -312,9 +318,7 @@ export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, 
         <circle cx={cx} cy={cy} r={r - 1} fill="var(--bg-card)" />
         {wedges.map((w) => (
           <g key={w.s.id}>
-            <path d={w.d} fill={w.s.color} stroke="var(--bg-screen)" strokeWidth="2.5"
-              onClick={onSliceClick && !spinning ? () => onSliceClick(w.s) : undefined}
-              style={{ cursor: onSliceClick && !spinning ? "pointer" : undefined }} />
+            <path d={w.d} fill={w.s.color} stroke="var(--bg-screen)" strokeWidth="2.5" />
             {w.s.iconPaths ? (
               <g transform={`translate(${w.lx - iconSz / 2} ${w.ly - iconSz / 2}) scale(${iconSz / 24})`} style={{ pointerEvents: "none" }}
                 fill="none" stroke="var(--bg-card)" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" opacity="0.92">
@@ -339,15 +343,6 @@ export function TaskWheel({ slices, size = 300, rotation = 0, spinning = false, 
       }}>
         {hub}
       </div>
-    </div>
-  );
-}
-
-export function WheelHub({ done = 0, total = 0 }: { done?: number; total?: number }) {
-  return (
-    <div style={{ textAlign: "center", lineHeight: 1 }}>
-      <div style={{ fontSize: 24, fontWeight: 600, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.01em" }}>{done}/{total}</div>
-      <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", color: "var(--text-muted)", marginTop: 4 }}>TODAY</div>
     </div>
   );
 }

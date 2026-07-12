@@ -10,7 +10,7 @@ import { useApp, COLORS, FREE_LIMITS, type Task } from '../context/AppContext';
 import { FONTS } from '../theme/tokens';
 import {
   CategoryIcon, ConfettiBurst, Headline, SectionLabel, Sheet, SpinPill,
-  TASK_CATEGORIES, TASK_ICON_PATHS, TaskWheel, WheelHub, cardShadow, formatMmSs, useTokens,
+  TASK_CATEGORIES, TASK_ICON_PATHS, TaskWheel, cardShadow, formatMmSs, useTokens,
 } from '../components/kit';
 import { FocusMode } from '../components/FocusMode';
 import { SkeletonRows } from '../components/Skeleton';
@@ -575,12 +575,25 @@ export function TasksScreen() {
           <View style={{ alignItems: 'center', marginTop: 18, gap: 18 }}>
             <TaskWheel
               slices={slices} size={300} rotation={rotation}
-              hub={<WheelHub done={todayCompleted.length} total={todayCompleted.length + tasks.length} />}
-              onSlicePress={(sl) => { const task = tasks.find((x) => x.id === sl.id); if (task && !spinning) setPicked(task); }}
+              onPress={spinWheel}
             />
-            <SpinPill onPress={spinWheel} disabled={spinning || (!isPremium && spinsLeft === 0)}>
-              {spinning ? 'Spinning…' : !isPremium && spinsLeft === 0 ? 'All done for today' : 'Spin the wheel'}
-            </SpinPill>
+
+            {/* Today counter — below the wheel, not in the hub */}
+            <View style={{ alignItems: 'center' }}>
+              <Text style={s.todayCount}>{todayCompleted.length}/{todayCompleted.length + tasks.length}</Text>
+              <Text style={s.todayLabel}>TODAY</Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+              <View style={{ flex: 1 }}>
+                <SpinPill full onPress={spinWheel} disabled={spinning || (!isPremium && spinsLeft === 0)}>
+                  {spinning ? 'Spinning…' : !isPremium && spinsLeft === 0 ? 'All done for today' : 'Spin the wheel'}
+                </SpinPill>
+              </View>
+              <Pressable onPress={() => setTaskSheetOpen(true)} accessibilityRole="button" accessibilityLabel="Add task" style={[s.addTaskBtn, cardShadow(t.dark)]}>
+                <Plus size={22} color={t.colors.text.primary} strokeWidth={2.2} />
+              </Pressable>
+            </View>
 
             {/* Seed spin dots */}
             {!isPremium && (
@@ -606,6 +619,36 @@ export function TasksScreen() {
                 <ArrowUpRight size={14} color={t.colors.text.primary} strokeWidth={2} />
               </Pressable>
             </View>
+
+            {/* AI quick actions */}
+            <View style={{ flexDirection: 'row', gap: 9, width: '100%' }}>
+              <Pressable onPress={handleBreakdownOpen} style={s.dashedBtn}>
+                <Wand2 size={15} color={t.colors.text.secondary} strokeWidth={2} />
+                <Text style={s.dashedText}>Break into steps</Text>
+                {!isPremium && aiUsesToday >= FREE_LIMITS.aiBreakdownsPerDay && <BloomChip />}
+              </Pressable>
+              <Pressable onPress={handleVoiceOpen} style={s.dashedBtn}>
+                <Mic size={15} color={t.colors.text.secondary} strokeWidth={2} />
+                <Text style={s.dashedText}>Tell me your day</Text>
+                {!isPremium && voiceUsesThisMonth >= FREE_LIMITS.voicePerMonth && <BloomChip />}
+              </Pressable>
+            </View>
+
+            {/* Brain starter banner */}
+            <Pressable onPress={handleBrainOpen} style={[s.brainBanner, cardShadow(t.dark), { opacity: brainAvailable || !isPremium ? 1 : 0.6, width: '100%' }]}>
+              <View style={s.bannerBadge}>
+                <Sparkles size={18} color={t.colors.lavender} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.bannerTitle}>Brain starter</Text>
+                <Text style={s.bannerSub}>
+                  {brainAvailable
+                    ? 'A 30-second warm-up'
+                    : isPremium ? 'Back tomorrow' : '1 a week on Seed'}
+                </Text>
+              </View>
+              {!brainAvailable && !isPremium && <BloomChip />}
+            </Pressable>
           </View>
         )}
 
@@ -669,31 +712,6 @@ export function TasksScreen() {
                 </Animated.View>
               ))}
             </View>
-
-            {/* AI quick actions */}
-            <View style={{ flexDirection: 'row', gap: 9, marginTop: 12 }}>
-              <Pressable onPress={handleBreakdownOpen} style={s.dashedBtn}>
-                <Wand2 size={15} color={t.colors.text.secondary} strokeWidth={2} />
-                <Text style={s.dashedText}>Break into steps</Text>
-                {!isPremium && aiUsesToday >= FREE_LIMITS.aiBreakdownsPerDay && <BloomChip />}
-              </Pressable>
-              <Pressable onPress={handleVoiceOpen} style={s.dashedBtn}>
-                <Mic size={15} color={t.colors.text.secondary} strokeWidth={2} />
-                <Text style={s.dashedText}>Tell me your day</Text>
-                {!isPremium && voiceUsesThisMonth >= FREE_LIMITS.voicePerMonth && <BloomChip />}
-              </Pressable>
-            </View>
-
-            {/* Brain starter */}
-            <Pressable onPress={handleBrainOpen} style={[s.brainBtn, { opacity: brainAvailable || !isPremium ? 1 : 0.5 }]}>
-              <Sparkles size={15} color={t.colors.lavender} strokeWidth={2} />
-              <Text style={s.brainText}>
-                {brainAvailable
-                  ? 'Brain starter · a 30-second warm-up'
-                  : isPremium ? 'Brain starter · back tomorrow' : 'Brain starter · 1 a week on Seed'}
-              </Text>
-              {!brainAvailable && !isPremium && <BloomChip />}
-            </Pressable>
           </View>
         )}
 
@@ -827,9 +845,14 @@ const styles = (t: ReturnType<typeof useTokens>) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
   },
   dashedText: { fontFamily: FONTS.sansMedium, fontSize: 13, color: t.colors.text.secondary },
-  brainBtn: {
-    marginTop: 9, height: 44, borderRadius: 18, backgroundColor: t.colors.softs.lavender,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+  brainBanner: {
+    backgroundColor: t.colors.bg.card, borderRadius: 20, padding: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
   },
-  brainText: { fontFamily: FONTS.sansMedium, fontSize: 13.5, color: t.colors.text.primary },
+  todayCount: { fontFamily: FONTS.sansSemi, fontSize: 26, color: t.colors.text.primary, fontVariant: ['tabular-nums'] },
+  todayLabel: { fontFamily: FONTS.sansSemi, fontSize: 10, letterSpacing: 1.2, color: t.colors.text.muted, marginTop: 2 },
+  addTaskBtn: {
+    width: 52, height: 52, borderRadius: 999, backgroundColor: t.colors.bg.card,
+    alignItems: 'center', justifyContent: 'center',
+  },
 });
